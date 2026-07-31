@@ -1,6 +1,12 @@
+# Python — one shared env at the repo root, created by `uv sync`.
+# uv.lock is committed on purpose; it is what makes the install reproducible.
 .venv
-.vscode
 __pycache__
+.pytest_cache
+.ruff_cache
+
+# Personal lefthook overrides; lefthook.yml itself is committed
+lefthook-local.yml
 
 # Nuxt dev/build outputs
 .output
@@ -17,10 +23,14 @@ node_modules
 logs
 *.log
 
-# Misc
-.DS_Store
+# Editors — share the interpreter path, keep personal state out
+.vscode/*
+!.vscode/settings.json
 .fleet
 .idea
+
+# Misc
+.DS_Store
 
 # Local env files
 .env

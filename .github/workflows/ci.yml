@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    # macOS, not ubuntu: mlx ships arm64-only wheels, and llm_server.app imports
+    # MlxEngine at module scope, so nothing here is importable on Linux.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --frozen fails if uv.lock is stale rather than quietly re-resolving,
+      # which is the only way CI can vouch for the committed lockfile.
+      - run: uv sync --frozen
+
+      # --check, not --fix: CI reports, the pre-commit hook fixes.
+      - run: uv run ruff format --check apps/server
+
+      - run: uv run ruff check apps/server
+
+      # No suite committed yet; pytest exits 5 on an empty collection, so ask
+      # first. Delete the guard with the first test file.
+      - name: Test
+        run: |
+          if [ -d apps/server/tests ]; then uv run pytest; fi
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run lint
+
+      - run: bun run typecheck

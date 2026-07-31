@@ -1,0 +1,54 @@
+# Git hooks. lefthook is a dev dependency in the uv workspace, so `uv sync`
+# installs it and `make setup` wires .git/hooks. No global install needed.
+#
+# Escape hatch: `git commit --no-verify`. CI runs the same checks on everything,
+# so skipping locally costs you a red build, not a bad merge.
+
+pre-commit:
+  # Sequential on purpose: `ruff format` and `ruff check --fix` write to the
+  # same files, and racing them corrupts the fix. Everything here is fast
+  # enough that parallelism buys nothing.
+  parallel: false
+  skip:
+    - merge
+    - rebase
+  jobs:
+    - name: ruff-format
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    - name: ruff-lint
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+
+    # Nuxt's eslint config carries the stylistic rules, so this is the
+    # formatter for the web half too. There is no prettier.
+    - name: eslint
+      root: apps/web/
+      glob: "*.{js,ts,vue}"
+      run: bunx eslint --fix {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  jobs:
+    # Catches a pyproject.toml edited by hand without re-locking — the failure
+    # mode `uv sync --frozen` hits in CI, found one round-trip earlier.
+    - name: lockfile
+      run: uv lock --check
+
+    # Full sweep, not just staged: --no-verify commits land here eventually.
+    - name: ruff
+      run: uv run ruff check apps/server
+
+    # No suite committed yet; pytest exits 5 on an empty collection.
+    # Delete the guard with the first test file.
+    - name: pytest
+      run: if [ -d apps/server/tests ]; then uv run pytest; fi
+
+    # ~7 s. Too slow for pre-commit, cheap next to a failed CI run.
+    - name: typecheck
+      root: apps/web/
+      run: bun run typecheck
