@@ -7,8 +7,9 @@ most files still upstream's.
 
 | Concern        | Choice                                                          |
 | -------------- | --------------------------------------------------------------- |
+| Rendering      | SPA,`ssr: false`; `/` prerendered ([ADR 0005](../../docs/adr/0005-render-the-frontend-client-side.md)) |
 | Chat/streaming | Vercel AI SDK v7 (`ai`, `@ai-sdk/vue`)                      |
-| Backend        | Nitro routes,`server/api/`                                    |
+| Backend        | Nitro routes,`server/api/` — still fully live under SPA        |
 | DB             | NuxtHub`hub:db` → SQLite local / Turso prod, Drizzle         |
 | Auth           | `nuxt-auth-utils`, GitHub OAuth                               |
 | Other          | `nuxt-csurf` (global), `@comark/nuxt` + Shiki, NuxtHub blob |
@@ -29,13 +30,18 @@ creds not needed locally.
 ## Structure
 
 ```
-app/pages/           index.vue, chat/[id].vue
-app/components/chat/ message rendering, files, tools
+app/spa-loading-template.html   shell before Vue mounts; inline CSS only
+app/pages/           index.vue, chat/[id].vue (thin <Suspense> wrapper)
+app/components/chat/ Conversation.vue ← the chat page's real body
 app/composables/     useChats, useChatActions, useModels, useFileUpload
 server/api/chats/[id].post.ts   ← the LLM call
 server/db/schema.ts  users, chats, messages, votes
 shared/utils/models.ts          MODELS registry
 ```
+
+**No top-level `await` in a page.** There is no server render behind it, so an
+awaited fetch holds the shell blank. Fetch lazily, or push the await into a
+child behind `<Suspense>` — that is why `ChatConversation` exists.
 
 `shared/` auto-imports via `#shared`. Composables and components auto-import —
 no manual imports.

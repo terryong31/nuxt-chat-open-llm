@@ -7,17 +7,28 @@ defineProps<{
 
 const colorMode = useColorMode()
 const appConfig = useAppConfig()
-const { user, clear } = useUserSession()
+const user = useSupabaseUser()
+const supabase = useSupabaseClient()
+
+const userName = computed(() => {
+  if (!user.value) return ''
+  return user.value.user_metadata?.full_name || user.value.user_metadata?.name || user.value.user_metadata?.preferred_username || user.value.email || ''
+})
+
+const userAvatar = computed(() => {
+  if (!user.value) return undefined
+  return user.value.user_metadata?.avatar_url || user.value.user_metadata?.avatar || undefined
+})
 
 const colors = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose']
 const neutrals = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'taupe', 'mauve', 'mist', 'olive']
 
 const items = computed<DropdownMenuItem[][]>(() => ([[{
   type: 'label',
-  label: user.value?.name || user.value?.username,
+  label: userName.value,
   avatar: {
-    src: user.value?.avatar,
-    alt: user.value?.name || user.value?.username
+    src: userAvatar.value,
+    alt: userName.value
   }
 }], [{
   label: 'Theme',
@@ -38,7 +49,6 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
       type: 'checkbox',
       onSelect: (e) => {
         e.preventDefault()
-
         appConfig.ui.colors.primary = color
       }
     }))
@@ -58,7 +68,6 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
       checked: appConfig.ui.colors.neutral === color,
       onSelect: (e) => {
         e.preventDefault()
-
         appConfig.ui.colors.neutral = color
       }
     }))
@@ -73,7 +82,6 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
     checked: colorMode.value === 'light',
     onSelect(e: Event) {
       e.preventDefault()
-
       colorMode.preference = 'light'
     }
   }, {
@@ -134,8 +142,8 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
 }], [{
   label: 'Log out',
   icon: 'i-lucide-log-out',
-  onSelect() {
-    clear()
+  async onSelect() {
+    await supabase.auth.signOut()
     navigateTo('/')
   }
 }]]))
@@ -149,12 +157,12 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
   >
     <UButton
       v-bind="{
-        label: collapsed ? undefined : (user?.name || user?.username),
+        label: collapsed ? undefined : userName,
         trailingIcon: collapsed ? undefined : 'i-lucide-chevrons-up-down'
       }"
       :avatar="{
-        src: user?.avatar || undefined,
-        alt: user?.name || user?.username
+        src: userAvatar,
+        alt: userName
       }"
       color="neutral"
       variant="ghost"

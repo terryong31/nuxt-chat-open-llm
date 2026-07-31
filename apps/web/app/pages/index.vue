@@ -3,7 +3,7 @@ const input = ref('')
 const loading = ref(false)
 const chatId = crypto.randomUUID()
 
-const { user } = useUserSession()
+const user = useSupabaseUser()
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -11,7 +11,8 @@ const greeting = computed(() => {
   if (hour < 12) timeGreeting = 'Good morning'
   else if (hour < 18) timeGreeting = 'Good afternoon'
 
-  const name = user.value?.name?.split(' ')[0] || user.value?.username
+  const meta = user.value?.user_metadata
+  const name = (meta?.full_name || meta?.name || meta?.preferred_username)?.split(' ')[0] || user.value?.email?.split('@')[0]
 
   return name ? `${timeGreeting}, ${name}` : `${timeGreeting}`
 })
@@ -27,7 +28,7 @@ const {
   clearFiles
 } = useFileUploadWithStatus(chatId)
 
-const { csrf, headerName } = useCsrf()
+const { createChat: createSupabaseChat } = useSupabaseChats()
 
 async function createChat(prompt: string) {
   input.value = prompt
@@ -39,20 +40,14 @@ async function createChat(prompt: string) {
     parts.push(...uploadedFiles.value)
   }
 
-  const chat = await $fetch('/api/chats', {
-    method: 'POST',
-    headers: { [headerName]: csrf },
-    body: {
-      id: chatId,
-      message: {
-        role: 'user',
-        parts
-      }
-    }
+  const chat = await createSupabaseChat(chatId, {
+    id: crypto.randomUUID(),
+    role: 'user',
+    parts
   })
 
   refreshNuxtData('chats')
-  navigateTo(`/chat/${chat?.id}`)
+  navigateTo(`/chat/${chat.id}`)
 }
 
 async function onSubmit() {

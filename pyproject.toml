@@ -2,7 +2,7 @@
 # Listed explicitly rather than `apps/*`: that glob matches apps/web, and uv
 # errors on a workspace member without a pyproject.toml. The Python and
 # JavaScript halves of this repo cannot share one glob.
-members = ["apps/server", "packages/*"]
+members = ["server/api", "server/llm", "packages/*"]
 
 [tool.uv]
 required-version = ">=0.11"
@@ -19,18 +19,11 @@ dev = [
 
 [tool.ruff]
 line-length = 88
-# Deliberately below the 3.14 runtime. At py314 the formatter applies PEP 758
-# and rewrites `except (A, B):` to `except A, B:` -- valid, but identical to the
-# Python 2 form that has been a SyntaxError for a decade, so every reader stops
-# on it. Nothing else in the enabled rule set is version-sensitive, so this buys
-# readability for free. Raise it if you ever enable the UP rules.
 target-version = "py313"
 
 [tool.ruff.lint]
-# Default set (pyflakes + the error-level pycodestyle rules) plus import
-# ordering, which is the one thing pyflakes never checked.
 extend-select = ["I"]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/server/tests"]
+testpaths = ["server/api/tests", "server/llm/tests"]
 asyncio_mode = "auto"

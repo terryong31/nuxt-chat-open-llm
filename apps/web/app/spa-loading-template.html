@@ -1,0 +1,49 @@
+<!--
+  Shown inside the app root until Vue mounts. Only matters under `ssr: false`:
+  without it the shell is a literally blank page for the length of the JS
+  download. Self-contained on purpose -- this has to render before the app's
+  stylesheet arrives, so it cannot use Tailwind or --ui-* variables. The .dark
+  class is already on <html> by now; the color-mode script is inlined and
+  blocking, so it wins the race.
+-->
+<div class="spa-loader" role="status" aria-label="Loading">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" opacity=".15" />
+    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" />
+  </svg>
+</div>
+
+<style>
+  .spa-loader {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+    color: #171717;
+  }
+
+  html.dark .spa-loader {
+    background: #0a0a0a;
+    color: #fafafa;
+  }
+
+  .spa-loader svg {
+    animation: spa-loader-spin 0.7s linear infinite;
+  }
+
+  @keyframes spa-loader-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* A spinner that never stops is worse than no spinner for anyone who gets
+     motion sick; fall back to a static ring. */
+  @media (prefers-reduced-motion: reduce) {
+    .spa-loader svg {
+      animation: none;
+    }
+  }
+</style>

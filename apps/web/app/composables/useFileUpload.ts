@@ -1,42 +1,20 @@
-interface BlobResult {
-  pathname: string
-  url?: string
-  contentType?: string
-  size: number
-}
-
 function createObjectUrl(file: File): string {
   return URL.createObjectURL(file)
-}
-
-function fileToInput(file: File): HTMLInputElement {
-  const dataTransfer = new DataTransfer()
-  dataTransfer.items.add(file)
-
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.files = dataTransfer.files
-
-  return input
 }
 
 export function useFileUploadWithStatus(chatId: string) {
   const files = ref<FileWithStatus[]>([])
   const toast = useToast()
-  const { loggedIn } = useUserSession()
-
-  const { csrf, headerName } = useCsrf()
-
-  const upload = useUpload(`/api/upload/${chatId}`, {
-    method: 'PUT',
-    headers: { [headerName]: csrf }
-  })
+  const user = useSupabaseUser()
+  const supabase = useSupabaseClient()
+  const loggedIn = computed(() => !!user.value)
 
   async function uploadFiles(newFiles: File[]) {
-    if (!loggedIn.value) {
+    if (!loggedIn.value || !user.value) {
       return
     }
 
+    const username = user.value.user_metadata?.preferred_username || user.value.user_metadata?.user_name || user.value.id
     const filesWithStatus: FileWithStatus[] = newFiles.map(file => ({
       file,
       id: crypto.randomUUID(),
@@ -51,29 +29,30 @@ export function useFileUploadWithStatus(chatId: string) {
       if (index === -1) return
 
       try {
-        const input = fileToInput(fileWithStatus.file)
-        const response = await upload(input) as BlobResult | BlobResult[] | undefined
+        const filePath = `${username}/${chatId}/${fileWithStatus.id}-${fileWithStatus.file.name}`
+        const { data, error } = await supabase.storage
+          .from('chat-attachments')
+          .upload(filePath, fileWithStatus.file, {
+            cacheControl: '3600',
+            upsert: true
+          })
 
-        if (!response) {
-          throw new Error('Upload failed')
+        if (error || !data) {
+          throw error || new Error('Upload failed')
         }
 
-        const result = Array.isArray(response) ? response[0] : response
-
-        if (!result) {
-          throw new Error('Upload failed')
-        }
+        const { data: publicUrlData } = supabase.storage
+          .from('chat-attachments')
+          .getPublicUrl(filePath)
 
         files.value[index] = {
           ...files.value[index]!,
           status: 'uploaded',
-          uploadedUrl: result.url,
-          uploadedPathname: result.pathname
+          uploadedUrl: publicUrlData.publicUrl,
+          uploadedPathname: filePath
         }
       } catch (error) {
-        const errorMessage = (error as { data?: { message?: string } }).data?.message
-          || (error as Error).message
-          || 'Upload failed'
+        const errorMessage = (error as Error).message || 'Upload failed'
         toast.add({
           title: 'Upload failed',
           description: errorMessage,
@@ -119,11 +98,8 @@ export function useFileUploadWithStatus(chatId: string) {
     files.value = files.value.filter(f => f.id !== id)
 
     if (file.status === 'uploaded' && file.uploadedPathname) {
-      $fetch(`/api/upload/${file.uploadedPathname}` as string, {
-        method: 'DELETE',
-        headers: { [headerName]: csrf }
-      }).catch((error) => {
-        console.error('Failed to delete file from blob:', error)
+      supabase.storage.from('chat-attachments').remove([file.uploadedPathname]).catch((error) => {
+        console.error('Failed to delete file from Supabase storage:', error)
       })
     }
   }

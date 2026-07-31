@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Motion } from 'motion-v'
 
-const { loggedIn } = useUserSession()
+const user = useSupabaseUser()
+const loggedIn = computed(() => !!user.value)
 
 defineProps<{
   show: boolean

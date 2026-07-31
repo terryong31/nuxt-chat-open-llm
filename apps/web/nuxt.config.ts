@@ -4,17 +4,25 @@ export default defineNuxtConfig({
     '@nuxt/eslint',
     '@nuxt/ui',
     '@comark/nuxt',
-    '@nuxthub/core',
-    'nuxt-auth-utils',
+    '@nuxtjs/supabase',
     'nuxt-charts',
     'nuxt-csurf'
   ],
+
+  ssr: false,
 
   devtools: {
     enabled: true
   },
 
   css: ['~/assets/css/main.css'],
+
+  runtimeConfig: {
+    public: {
+      appEnv: process.env.NUXT_PUBLIC_APP_ENV || 'development',
+      backendUrl: process.env.NUXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000'
+    }
+  },
 
   experimental: {
     viewTransition: true
@@ -23,14 +31,13 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-06-30',
 
   nitro: {
+    prerender: {
+      routes: ['/']
+    },
+
     experimental: {
       openAPI: true
     }
-  },
-
-  hub: {
-    db: 'sqlite',
-    blob: true
   },
 
   vite: {
@@ -45,6 +52,14 @@ export default defineNuxtConfig({
         commaDangle: 'never',
         braceStyle: '1tbs'
       }
+    }
+  },
+
+  supabase: {
+    redirectOptions: {
+      login: '/',
+      callback: '/confirm',
+      exclude: ['/*']
     }
   }
 })

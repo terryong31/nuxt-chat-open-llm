@@ -1,5 +1,6 @@
 <script setup lang="ts">
-const { loggedIn } = useUserSession()
+const user = useSupabaseUser()
+const loggedIn = computed(() => !!user.value)
 
 defineProps<{
   open: () => void

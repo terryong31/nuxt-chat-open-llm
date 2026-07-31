@@ -1,39 +1,63 @@
-# One entrypoint for a repo with two package managers. Every target delegates;
-# no logic lives here. `make` alone lists what there is.
+# Master Monorepo Entrypoint
 .DEFAULT_GOAL := help
-.PHONY: help setup hooks dev repl web lint typecheck check clean
+.PHONY: help setup hooks api llm dev dev-stg dev-prod web web-stg web-prod build-dev build-stg build-prod lint typecheck check clean
 
 WEB := apps/web
 
 help:  ## Show this help
-	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-setup: hooks  ## Install both halves and the git hooks
+setup: hooks  ## Install dependencies across monorepo
 	cd $(WEB) && bun install
+	uv sync
 
-hooks:  ## Install git hooks (lefthook ships in the uv dev group)
+hooks:  ## Install git hooks
 	uv sync
 	uv run lefthook install
 
-dev:  ## Run the inference server on :8000
-	uv run llm-server
+api:  ## Run the Application API Gateway (BFF) on :8000
+	APP_ENV=development uv run api-server
 
-repl:  ## Streaming REPL against a running server
-	uv run llm-repl
+llm:  ## Run the LLM Inference Microservice on :9000
+	APP_ENV=development uv run llm-engine
 
-web:  ## Run the Nuxt frontend on :3000
+dev:  ## Run API Gateway in DEV mode
+	APP_ENV=development uv run api-server
+
+dev-stg:  ## Run API Gateway in STAGING mode
+	APP_ENV=staging uv run api-server
+
+dev-prod:  ## Run API Gateway in PRODUCTION mode
+	APP_ENV=production uv run api-server
+
+web:  ## Run the Nuxt frontend in DEV mode on :3000
 	cd $(WEB) && bun run dev
 
-lint:  ## Lint and format-check both halves
-	uv run ruff format --check apps/server
-	uv run ruff check apps/server
+web-stg:  ## Run the Nuxt frontend in STAGING mode
+	cd $(WEB) && bun run dev:stg
+
+web-prod:  ## Run the Nuxt frontend in PRODUCTION mode
+	cd $(WEB) && bun run dev:prod
+
+build-dev:  ## Build Nuxt frontend for DEV
+	cd $(WEB) && bun run build:dev
+
+build-stg:  ## Build Nuxt frontend for STAGING
+	cd $(WEB) && bun run build:stg
+
+build-prod:  ## Build Nuxt frontend for PRODUCTION
+	cd $(WEB) && bun run build:prod
+
+lint:  ## Lint Python and JavaScript packages
+	uv run ruff format --check server/api server/llm
+	uv run ruff check server/api server/llm
 	cd $(WEB) && bun run lint
 
 typecheck:  ## Typecheck the frontend
 	cd $(WEB) && bun run typecheck
 
-check: lint typecheck  ## Everything CI runs
+check: lint typecheck  ## Run CI checks
 
 clean:  ## Drop generated environments and caches
 	rm -rf .venv $(WEB)/node_modules $(WEB)/.nuxt $(WEB)/.output

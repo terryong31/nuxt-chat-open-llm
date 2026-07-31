@@ -1,30 +1,54 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 
-const { loggedIn, openInPopup } = useUserSession()
+const user = useSupabaseUser()
+const supabase = useSupabaseClient()
+const loggedIn = computed(() => !!user.value)
 const { renameChat, deleteChat } = useChatActions()
+
+async function loginWithGitHub() {
+  await supabase.auth.signInWithOAuth({
+    provider: 'github',
+    options: {
+      redirectTo: `${window.location.origin}`
+    }
+  })
+}
 
 const sidebarOpen = ref(false)
 const searchOpen = ref(false)
 
-const { data: chats, refresh: refreshChats } = await useFetch('/api/chats', {
-  key: 'chats',
-  transform: data => data.map(chat => ({
+const { fetchChats } = useSupabaseChats()
+
+const { data: chats, status: chatsStatus, refresh: refreshChats } = useAsyncData('chats', async () => {
+  const items = await fetchChats()
+  return items.map(chat => ({
     id: chat.id,
     label: chat.title || 'Untitled',
     to: `/chat/${chat.id}`,
     icon: 'i-lucide-message-circle',
-    createdAt: chat.createdAt
+    createdAt: chat.created_at
   }))
+}, {
+  lazy: true
 })
 
-onNuxtReady(async () => {
-  const first10 = (chats.value || []).slice(0, 10)
-  for (const chat of first10) {
-    // prefetch the chat and let the browser cache it
-    await $fetch(`/api/chats/${chat.id}`)
-  }
-})
+// Prefetch the most recent conversations so opening one is instant. Driven off
+// a watch rather than read once at startup: the list is lazy now and is usually
+// still in flight when the app becomes ready. The set keeps a later refresh --
+// login, a new chat, a rename -- from refetching what is already cached.
+const prefetched = new Set<string>()
+watch(chats, (list) => {
+  if (!list?.length) return
+
+  onNuxtReady(() => {
+    for (const chat of list.slice(0, 10)) {
+      if (prefetched.has(chat.id)) continue
+      prefetched.add(chat.id)
+      $fetch(`/api/chats/${chat.id}`)
+    }
+  })
+}, { immediate: true })
 
 watch(loggedIn, () => {
   refreshChats()
@@ -122,8 +146,20 @@ defineShortcuts({
           </template>
         </UNavigationMenu>
 
+        <!-- Placeholder rows rather than an empty rail: the list arrives a beat
+             after first paint now, and a sidebar that pops from blank to full
+             reads as a glitch. -->
+        <div v-if="!collapsed && chatsStatus === 'pending'" class="flex flex-col gap-2 px-2.5 pt-3">
+          <USkeleton
+            v-for="i in 6"
+            :key="i"
+            class="h-4"
+            :style="{ width: `${85 - i * 7}%` }"
+          />
+        </div>
+
         <UNavigationMenu
-          v-if="!collapsed"
+          v-else-if="!collapsed"
           :items="items"
           :collapsed="collapsed"
           orientation="vertical"
@@ -162,7 +198,7 @@ defineShortcuts({
           color="neutral"
           variant="ghost"
           class="w-full"
-          @click="openInPopup('/auth/github')"
+          @click="loginWithGitHub"
         />
       </template>
     </UDashboardSidebar>

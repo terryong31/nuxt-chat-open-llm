@@ -11,7 +11,6 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
-const { csrf, headerName } = useCsrf()
 const clipboard = useClipboard()
 
 const loading = ref(false)
@@ -34,6 +33,8 @@ const options = [
   }
 ]
 
+const { updateVisibility: updateSupabaseVisibility } = useSupabaseChats()
+
 async function updateVisibility(value: 'public' | 'private') {
   if (value === props.visibility) return
 
@@ -42,11 +43,7 @@ async function updateVisibility(value: 'public' | 'private') {
   emit('update:visibility', value)
 
   try {
-    await $fetch(`/api/chats/${props.chatId}/visibility`, {
-      method: 'PATCH',
-      headers: { [headerName]: csrf },
-      body: { visibility: value }
-    })
+    await updateSupabaseVisibility(props.chatId, value)
   } catch {
     emit('update:visibility', previous)
     toast.add({

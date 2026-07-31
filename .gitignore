@@ -36,3 +36,9 @@ logs
 .env
 .env.*
 !.env.example
+
+# Written by NuxtHub on build. Redundant -- `.data` above already matches it at
+# any depth -- but left in place so each build doesn't dirty the tree re-adding it.
+apps/web/.data
+
+.antigravitycli
