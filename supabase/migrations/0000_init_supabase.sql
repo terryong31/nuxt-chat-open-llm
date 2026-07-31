@@ -21,11 +21,29 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'avatar', ''),
-    COALESCE(NEW.raw_user_meta_data->>'preferred_username', NEW.raw_user_meta_data->>'user_name', split_part(NEW.email, '@', 1)),
-    COALESCE(NEW.app_metadata->>'provider', 'email'),
-    COALESCE(NEW.raw_user_meta_data->>'provider_id', NEW.id::text)
+    COALESCE(
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'full_name' ELSE NULL END,
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'name' ELSE NULL END,
+      ''
+    ),
+    COALESCE(
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'avatar_url' ELSE NULL END,
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'avatar' ELSE NULL END,
+      ''
+    ),
+    COALESCE(
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'preferred_username' ELSE NULL END,
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'user_name' ELSE NULL END,
+      split_part(COALESCE(NEW.email, 'user@local.host'), '@', 1)
+    ),
+    COALESCE(
+      CASE WHEN NEW.app_metadata IS NOT NULL THEN NEW.app_metadata->>'provider' ELSE NULL END,
+      'email'
+    ),
+    COALESCE(
+      CASE WHEN NEW.raw_user_meta_data IS NOT NULL THEN NEW.raw_user_meta_data->>'provider_id' ELSE NULL END,
+      NEW.id::text
+    )
   )
   ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,

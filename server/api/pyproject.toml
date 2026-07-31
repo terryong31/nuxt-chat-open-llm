@@ -11,6 +11,15 @@ dependencies = [
     "supabase>=2.10.0",
     "pyjwt[crypto]>=2.9.0",
     "httpx>=0.28.1",
+    # LangGraph agent
+    "langgraph>=0.3",
+    "langchain-openai>=0.3",
+    "langchain-community>=0.3",
+    "langchain-core>=0.3",
+    # DuckDuckGo web search
+    "duckduckgo-search>=8.0",
+    # pgvector via supabase postgres
+    "vecs>=0.4",
 ]
 
 [project.scripts]
