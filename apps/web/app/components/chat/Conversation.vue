@@ -17,7 +17,11 @@ const { data } = await useAsyncData(`chat-${route.params.id}`, async () => {
   const result: any = await fetchChat(route.params.id as string)
   if (!result) return null
 
-  const isOwner = user.value?.id === result.user_id
+  // The gateway verifies the JWT, so it decides ownership and returns it. The
+  // client-side comparison is only a fallback: with no Supabase session
+  // `user.value` is null, which would read as "not the owner" and hide the
+  // composer on a chat you just created.
+  const isOwner = result.isOwner ?? (user.value?.id === result.user_id)
   const messages = (result.messages || []).sort((a: any, b: any) =>
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   ).map((m: any) => ({
@@ -70,6 +74,10 @@ const backendUrl = config.public.backendUrl || 'http://localhost:8000'
 const { messages, status, error, sendMessage, regenerate, stop } = useChat({
   id: data.value?.id,
   messages: data.value?.messages,
+  // `messages.id` is a uuid column and `votes.message_id` references it. The
+  // SDK's default generator emits nanoid strings, which Postgres rejects, so
+  // every turn after the first was silently dropped from history.
+  generateId: () => crypto.randomUUID(),
   transport: new DefaultChatTransport({
     api: `${backendUrl}/v1/chats/${route.params.id}/stream`,
     headers: token.value ? { Authorization: `Bearer ${token.value}` } : undefined,
@@ -80,12 +88,11 @@ const { messages, status, error, sendMessage, regenerate, stop } = useChat({
   }),
   onData: async (dataPart) => {
     if (dataPart.type === 'data-chat-title') {
+      // The gateway sends the title it just persisted, so take it directly
+      // rather than refetching and hoping the write landed first.
+      const next = (dataPart.data as { title?: string } | undefined)?.title
+      if (next) title.value = next
       await refreshNuxtData('chats')
-      const chatsCache = useNuxtData<{ id: string, label: string }[]>('chats')
-      const updated = chatsCache.data.value?.find(c => c.id === data.value!.id)
-      if (updated && updated.label !== 'Untitled') {
-        title.value = updated.label
-      }
     }
   },
   onFinish: async ({ message }) => {

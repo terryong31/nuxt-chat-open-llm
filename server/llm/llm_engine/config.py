@@ -1,16 +1,23 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 app_env = os.getenv("APP_ENV", "development")
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
     app_env: str = app_env
     model_config = SettingsConfigDict(
         env_prefix="LLM_",
-        env_file=(".env", f".env.{app_env}"),
+        env_file=(
+            str(BASE_DIR / ".env"),
+            str(BASE_DIR / f".env.{app_env}"),
+            ".env",
+            f".env.{app_env}",
+        ),
         extra="ignore",
         protected_namespaces=(),
     )

@@ -18,7 +18,7 @@ async function loginWithGitHub() {
 const sidebarOpen = ref(false)
 const searchOpen = ref(false)
 
-const { fetchChats } = useSupabaseChats()
+const { fetchChats, fetchChat } = useSupabaseChats()
 
 const { data: chats, status: chatsStatus, refresh: refreshChats } = useAsyncData('chats', async () => {
   const items = await fetchChats()
@@ -45,7 +45,9 @@ watch(chats, (list) => {
     for (const chat of list.slice(0, 10)) {
       if (prefetched.has(chat.id)) continue
       prefetched.add(chat.id)
-      $fetch(`/api/chats/${chat.id}`)
+      // Goes to the gateway. `/api/chats/:id` was a Nitro route and 404s now
+      // that the SPA has no server directory.
+      fetchChat(chat.id)
     }
   })
 }, { immediate: true })
