@@ -53,7 +53,9 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 
 def require_api_key(
     settings: SettingsDep,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(_bearer)
+    ] = None,
 ) -> None:
     """No-op until `LLM_API_KEYS` is set.
 

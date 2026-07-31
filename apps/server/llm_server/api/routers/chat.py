@@ -113,7 +113,7 @@ async def _sse(
                     usage=schemas.Usage.from_domain(event.usage),
                 )
             event = await anext(stream, None)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # The status line left the building several chunks ago. An explicit
         # error frame before the terminator is the only honest signal left --
         # otherwise a truncated answer is indistinguishable from a short one.

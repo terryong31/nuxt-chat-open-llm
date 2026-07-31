@@ -1,0 +1,27 @@
+[project]
+name = "llm-server"
+version = "0.1.0"
+description = "OpenAI-compatible inference server for Mamba-Codestral on MLX"
+readme = "CLAUDE.md"
+requires-python = ">=3.14"
+dependencies = [
+    "mlx-lm>=0.31.3",
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.0",
+    "pydantic-settings>=2.14.2",
+    # Not needed to serve, but `llm-repl` ships with the package and speaks HTTP.
+    "httpx>=0.28.1",
+]
+
+[project.scripts]
+llm-server = "llm_server.__main__:main"
+llm-repl = "llm_server.repl:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# Flat layout: llm_server/ sits beside this file rather than under src/.
+module-root = ""
+module-name = "llm_server"

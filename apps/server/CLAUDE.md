@@ -1,17 +1,20 @@
-# server — inference API
+# apps/server — inference API
 
 OpenAI-compatible HTTP server wrapping a local MLX checkpoint. Python 3.14,
 FastAPI, `mlx-lm`. Apple Silicon only (Metal).
 
+Distribution `llm-server`, a uv workspace member. The env is the repo-root
+`.venv`; there is none here.
+
 ## Commands
 
-Run from `server/`. Always use the venv interpreter — there is no global install.
+Any directory in the repo — uv finds the workspace.
 
 ```shell
-.venv/bin/python main.py                 # serve on 127.0.0.1:8000
-.venv/bin/python test.py                 # streaming REPL client
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pyflakes llm_server  # lint
+uv run llm-server                    # serve on 127.0.0.1:8000
+uv run llm-repl                      # streaming REPL client
+uv run ruff check apps/server        # lint
+uv add --package llm-server X        # add a dependency
 ```
 
 First run downloads ~3.8 GB from Hugging Face. Startup is ~3 s warm.
@@ -32,6 +35,9 @@ Errors use OpenAI's envelope: `{"error": {"message", "type"}}`. Types:
 ## Layer map
 
 ```
+__main__.py       `llm-server` / `python -m llm_server`. Chooses how to serve.
+asgi.py           Module-level `app`, for import-string process managers
+repl.py           `llm-repl`. A client, not part of the server.
 config.py         Settings; every knob is an LLM_* env var or .env line
 app.py            create_app(settings, engine) — factory, lifespan, middleware,
                   error→status mapping. The ONLY file naming a concrete engine.
@@ -58,8 +64,9 @@ Dependency direction is strictly `api → services → engine`. Nothing in
 - **Weights load in lifespan, never at module import.** Module-level loading
   gives every importing process its own multi-GB copy.
 - **Single process.** No `workers>1`, no `reload=True` — each would load a
-  second copy of the model. `main.py` passes the app object, not an import
-  string, to make this impossible by construction.
+  second copy of the model. `__main__.py` passes the app object, not an import
+  string, to make this impossible by construction. `asgi.py` exists for process
+  managers that insist on a string; it is the door that `--workers` walks in.
 - **Pull the first stream event inside the route before returning
   `StreamingResponse`.** Once SSE headers are sent the status code is fixed, so
   admission/readiness errors must surface before that.
@@ -91,7 +98,7 @@ Dependency direction is strictly `api → services → engine`. Nothing in
 
 ## Config
 
-`LLM_`-prefixed env vars or `server/.env`. Full list with defaults in
+`LLM_`-prefixed env vars or `apps/server/.env`. Full list with defaults in
 `config.py`. Frequently used:
 
 `LLM_MODEL_ID`, `LLM_PORT`, `LLM_API_KEYS` (JSON list; empty disables auth),
@@ -100,7 +107,11 @@ Dependency direction is strictly `api → services → engine`. Nothing in
 
 ## Testing
 
-No test suite committed yet. Swap in a fake engine rather than loading weights:
+`pytest` + `pytest-asyncio` are installed; no suite committed yet. Tests go in
+`apps/server/tests/` — CI skips the step until that directory exists, and the
+guard in `.github/workflows/ci.yml` comes out with the first test file.
+
+Swap in a fake engine rather than loading weights:
 
 ```python
 app = create_app(settings=Settings(...), engine=FakeEngine())

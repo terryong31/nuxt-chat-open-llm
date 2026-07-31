@@ -17,8 +17,8 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
 from ..config import Settings
-from ..errors import UnsupportedContent
 from ..engine.base import GenerationParams, LLMEngine, Message, StreamEvent
+from ..errors import UnsupportedContent
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +68,9 @@ class ChatService:
             # ceiling is what stops one request monopolising the GPU.
             max_tokens=min(requested, s.max_tokens_limit),
             temperature=(
-                options.temperature if options.temperature is not None else s.temperature
+                options.temperature
+                if options.temperature is not None
+                else s.temperature
             ),
             top_p=options.top_p if options.top_p is not None else s.top_p,
             repetition_penalty=s.repetition_penalty,

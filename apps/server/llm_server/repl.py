@@ -3,7 +3,7 @@
 Speaks the same SSE protocol as any OpenAI client, so it doubles as a worked
 example of what the Nuxt app has to do:
 
-    python test.py
+    uv run llm-repl
 """
 
 import json
