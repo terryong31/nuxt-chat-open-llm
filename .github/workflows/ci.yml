@@ -11,8 +11,7 @@ concurrency:
 
 jobs:
   server:
-    # macOS, not ubuntu: mlx ships arm64-only wheels, and llm_server.app imports
-    # MlxEngine at module scope, so nothing here is importable on Linux.
+    # macOS, not ubuntu: mlx ships arm64-only wheels, so arm64 macOS runners are required.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -22,20 +21,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      # --frozen fails if uv.lock is stale rather than quietly re-resolving,
-      # which is the only way CI can vouch for the committed lockfile.
+      # --frozen fails if uv.lock is stale rather than quietly re-resolving
       - run: uv sync --frozen
 
       # --check, not --fix: CI reports, the pre-commit hook fixes.
-      - run: uv run ruff format --check apps/server
+      - run: uv run ruff format --check server/api server/llm
 
-      - run: uv run ruff check apps/server
+      - run: uv run ruff check server/api server/llm
 
-      # No suite committed yet; pytest exits 5 on an empty collection, so ask
-      # first. Delete the guard with the first test file.
+      # Run pytest if tests directory exists in server/api or server/llm
       - name: Test
         run: |
-          if [ -d apps/server/tests ]; then uv run pytest; fi
+          if [ -d server/api/tests ] || [ -d server/llm/tests ]; then uv run pytest; fi
 
   web:
     runs-on: ubuntu-latest
