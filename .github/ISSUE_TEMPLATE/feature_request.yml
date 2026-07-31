@@ -1,0 +1,57 @@
+name: Feature Request / Proposal
+description: Suggest an enhancement, optimization, or architectural change.
+title: "[Proposal]: "
+labels: ["type: feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please remember our core philosophy: **judgment over feature count**. We prefer small, well-reasoned changes that keep the system lean and maintainable.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Select the component this proposal targets.
+      options:
+        - "apps/server (Python / MLX Inference Server)"
+        - "apps/web (Nuxt 4 Chat UI)"
+        - "packages/ (Shared Python packages)"
+        - "docs/adr/ (Architecture Decision Records)"
+        - "Repository / CI / Tooling"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Rationale & Motivation
+      description: What problem or limitation does this proposal address? Why is this change necessary?
+      placeholder: Describe the problem...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution & Implementation Sketch
+      description: Describe the solution you would like to see implemented.
+      placeholder: Outline your proposed solution...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternative solutions or features have you considered, and why were they rejected?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: adr_check
+    attributes:
+      label: Architectural Impact
+      description: Check if this proposal requires a new Architecture Decision Record (ADR).
+      options:
+        - label: This change alters architectural boundaries or design invariants and requires a new ADR in `docs/adr/`.

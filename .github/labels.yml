@@ -1,0 +1,56 @@
+# GitHub Labels Configuration for ssm-mistral-mamba-chatbot
+
+# Area / Component
+- name: "area: server"
+  color: "1d76db"
+  description: "Python FastAPI / MLX inference server (apps/server)"
+
+- name: "area: web"
+  color: "00dc82"
+  description: "Nuxt 4 chat frontend & Nitro server routes (apps/web)"
+
+- name: "area: packages"
+  color: "5319e7"
+  description: "Shared Python packages and benchmarks (packages/)"
+
+- name: "area: docs"
+  color: "0075ca"
+  description: "Documentation and ADR updates"
+
+- name: "area: infra"
+  color: "fbca04"
+  description: "CI, build tooling, lefthook, makefile, and dependencies"
+
+# Type
+- name: "type: bug"
+  color: "d73a4a"
+  description: "Something isn't working as expected"
+
+- name: "type: feature"
+  color: "a2eeef"
+  description: "New feature or enhancement proposal"
+
+- name: "type: refactor"
+  color: "7f8c8d"
+  description: "Code simplification, cleanup, or structure improvement"
+
+- name: "type: adr"
+  color: "e99695"
+  description: "Architectural Decision Record additions or proposals"
+
+# Status & Priority
+- name: "status: help wanted"
+  color: "008672"
+  description: "Extra attention or community contribution welcome"
+
+- name: "status: good first issue"
+  color: "7057ff"
+  description: "Good for newcomers to the project"
+
+- name: "status: needs adr"
+  color: "d4c5f9"
+  description: "Proposal requires an Architectural Decision Record before proceeding"
+
+- name: "status: blocked"
+  color: "e11d21"
+  description: "Blocked by another task or upstream dependency"
