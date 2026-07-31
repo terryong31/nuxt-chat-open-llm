@@ -71,7 +71,7 @@ const { messages, status, error, sendMessage, regenerate, stop } = useChat({
   id: data.value?.id,
   messages: data.value?.messages,
   transport: new DefaultChatTransport({
-    api: `${backendUrl}/api/chat`,
+    api: `${backendUrl}/v1/chats/${route.params.id}/stream`,
     headers: token.value ? { Authorization: `Bearer ${token.value}` } : undefined,
     body: {
       model: model.value,
