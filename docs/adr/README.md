@@ -11,6 +11,7 @@ disagree, an ADR is stale — fix it.
 | [0003](0003-serialize-generation.md) | Serialize generation, shed excess load | Accepted |
 | [0004](0004-reconcile-eos-tokens.md) | Reconcile the checkpoint's EOS tokens at load | Accepted |
 | [0005](0005-render-the-frontend-client-side.md) | Render the frontend client-side | Accepted |
+| [0006](0006-move-the-bff-into-a-python-gateway.md) | Move the BFF out of Nitro into a Python gateway | Accepted |
 
 Copy the shape of an existing record. Number sequentially and never renumber.
 A decision that changes gets a new record marked `Supersedes 000N`; the old one

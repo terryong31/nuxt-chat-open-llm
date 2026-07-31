@@ -53,47 +53,66 @@ domain is programming assistance.
 
 Everything runs on your own machine. No inference leaves the device.
 
-> **Status:** the inference server is complete and tested. The frontend is the
-> Nuxt UI chat template and still calls hosted models; wiring it to the local
-> server is in progress. See [Roadmap](#roadmap).
+> **Status:** end to end. The Nuxt UI streams from the local Mamba checkpoint
+> through a Python gateway — no hosted model in the path. Remaining work is the
+> benchmark this project exists for. See [Roadmap](#roadmap).
 
 ## Architecture
 
+Three processes. The frontend is a pure SPA, the gateway owns data and agent
+logic, the engine owns the GPU and nothing else.
+
 ```mermaid
 flowchart LR
-    subgraph web["apps/web · Nuxt 4"]
+    subgraph web["apps/web · Nuxt 4 SPA"]
         UI["Chat UI<br/>Nuxt UI 4"]
-        SDK["AI SDK v7<br/>streamText"]
-        DB[("SQLite<br/>Drizzle")]
+        SDK["AI SDK v7<br/>useChat"]
         UI <--> SDK
-        SDK --> DB
     end
 
-    subgraph srv["apps/server · FastAPI"]
+    subgraph gw["server/api · FastAPI :8000"]
+        R["routers/<br/>chats, auth"]
+        AG["agent/<br/>LangGraph"]
+        R --> AG
+    end
+
+    subgraph srv["server/llm · FastAPI :9000"]
         API["api/<br/>OpenAI schemas"]
-        SVC["services/<br/>orchestration"]
         ENG["engine/<br/>mlx-lm"]
-        API --> SVC --> ENG
+        API --> ENG
     end
 
+    DB[("Supabase<br/>Postgres · Auth · pgvector")]
     GPU[["Metal GPU<br/>Mamba-Codestral 7B · 3.82 GB"]]
 
-    SDK -- "POST /v1/chat/completions" --> API
-    API -. "SSE token stream" .-> SDK
+    SDK -- "POST /v1/chats/:id/stream" --> R
+    R -. "SSE · AI SDK UI Message Stream" .-> SDK
+    AG -- "POST /v1/chat/completions" --> API
+    API -. "SSE · OpenAI chunks" .-> AG
+    AG <--> DB
     ENG --> GPU
 ```
 
-The server implements the OpenAI chat-completions protocol deliberately: any
+The engine implements the OpenAI chat-completions protocol deliberately: any
 OpenAI client works against it by changing one base URL, and the model can be
-swapped for a hosted one without touching the frontend.
+swapped for a hosted one without touching anything above it.
 
-Internally the server is layered `api → services → engine`, where `engine`
-depends on no web framework and `api` depends on no inference library. Pointing
-it at vLLM, Ollama, or a remote endpoint means writing one class against the
-`LLMEngine` protocol.
+Internally it is layered `api → engine`, where `engine` depends on no web
+framework and `api` depends on no inference library. Pointing it at vLLM,
+Ollama, or a remote endpoint means writing one class against the `LLMEngine`
+protocol.
+
+Why the gateway is a third process rather than a Nitro route — and what that
+costs — is [ADR 0006](docs/adr/0006-move-the-bff-into-a-python-gateway.md).
 
 ## Features
 
+- **Full local chat** — Nuxt UI streaming from the local checkpoint, with
+  history, titles, votes, edit/regenerate and file attachments persisted in
+  Postgres.
+- **Agent gateway** — LangGraph graph with web-search and pgvector RAG tools
+  wired in, translating between the AI SDK's UI Message Stream and the OpenAI
+  protocol.
 - **OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`, streaming
   and buffered, with OpenAI's error envelope.
 - **Real SSE streaming** with backpressure, so a slow client throttles
@@ -129,31 +148,33 @@ make setup
 workspace: one `.venv` at the repo root shared by every member, resolved from
 the committed `uv.lock`.
 
-The frontend also needs an env file:
+Both halves need env files. A Supabase project supplies the database, auth and
+storage; the anon key goes to the browser and the service-role key never
+leaves the gateway.
 
 ```shell
-cp apps/web/.env.example apps/web/.env    # NUXT_SESSION_PASSWORD must be ≥32 chars
+cp .env.example server/api/.env.development
+cp apps/web/.env.example apps/web/.env.development
 ```
+
+Then apply the migrations in [`supabase/migrations/`](supabase/migrations/) to
+your project.
 
 ## Usage
 
-Start the server. The first run downloads the checkpoint (~3.8 GB); later
-starts take a few seconds.
+Three processes, three terminals. Start the engine first — the first run
+downloads the checkpoint (~3.8 GB); later starts take a few seconds.
 
 ```shell
-make dev          # or: uv run llm-server
+make llm          # inference engine  :9000
+make api          # gateway           :8000
+make web          # chat UI           :3000  → http://localhost:3000
 ```
 
-Talk to it from the terminal:
+The engine is usable on its own with any OpenAI client:
 
 ```shell
-make repl         # or: uv run llm-repl
-```
-
-Or directly over HTTP:
-
-```shell
-curl -N http://127.0.0.1:8000/v1/chat/completions \
+curl -N http://127.0.0.1:9000/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
         "messages": [{"role": "user", "content": "Write a Python LRU cache."}],
@@ -161,12 +182,10 @@ curl -N http://127.0.0.1:8000/v1/chat/completions \
       }'
 ```
 
-Or with any OpenAI client:
-
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="not-needed")
+client = OpenAI(base_url="http://127.0.0.1:9000/v1", api_key="not-needed")
 stream = client.chat.completions.create(
     model="mamba-codestral",
     messages=[{"role": "user", "content": "Explain state space models."}],
@@ -176,43 +195,74 @@ for chunk in stream:
     print(chunk.choices[0].delta.content or "", end="", flush=True)
 ```
 
-Run the frontend in a second terminal:
-
-```shell
-make web          # http://localhost:3000
-```
-
 ### Endpoints
+
+`server/llm` — the OpenAI-compatible engine:
 
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/v1/chat/completions` | Chat, buffered or SSE (`"stream": true`) |
 | `GET` | `/v1/models` | Lists the loaded checkpoint |
-| `GET` | `/healthz` | Liveness — is the process up |
-| `GET` | `/readyz` | Readiness — 503 until weights are resident |
+| `GET` | `/health` | Liveness |
+
+`server/api` — the gateway the browser talks to, bearer-authenticated with a
+Supabase JWT:
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/v1/chats/{id}/stream` | A chat turn, as an AI SDK UI Message Stream |
+| `GET`/`POST` | `/v1/chats` | List and create chats |
+| `GET`/`DELETE` | `/v1/chats/{id}` | Fetch with messages; delete |
+| `PATCH` | `/v1/chats/{id}/title`, `/visibility` | |
+| `GET`/`POST` | `/v1/chats/{id}/votes` | |
+| `GET` | `/health` | Liveness |
 
 ## Configuration
 
-Server settings are `LLM_`-prefixed environment variables or lines in
-`apps/server/.env`. Defaults live in
-[`apps/server/llm_server/config.py`](apps/server/llm_server/config.py).
+Both Python services read `LLM_`-prefixed environment variables from
+`server/<half>/.env` or `.env.{APP_ENV}`, where `APP_ENV` is `development`,
+`staging`, or `production`. Defaults live in each half's `config.py`.
+
+`server/llm` — [`config.py`](server/llm/llm_engine/config.py):
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LLM_MODEL_ID` | `mlx-community/Mamba-Codestral-7B-v0.1-4bit` | Any MLX checkpoint |
-| `LLM_HOST` / `LLM_PORT` | `127.0.0.1` / `8000` | Bind address |
+| `LLM_HOST` / `LLM_PORT` | `127.0.0.1` / `9000` | Bind address |
 | `LLM_API_KEYS` | `[]` | JSON list; empty disables auth |
-| `LLM_CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed browser origins |
+| `LLM_CORS_ORIGINS` | `["http://localhost:3000", "http://127.0.0.1:8000"]` | Allowed origins |
 | `LLM_TEMPERATURE` | `0.7` | Sampling default; per-request override allowed |
+| `LLM_DEFAULT_MAX_TOKENS` | `200` | Per-reply default — raise it for long answers |
 | `LLM_MAX_TOKENS_LIMIT` | `2048` | Hard server-side ceiling |
 | `LLM_MAX_QUEUE_DEPTH` | `8` | Waiting requests before shedding load |
 | `LLM_EXTRA_EOS_TOKENS` | `[]` | Extra stop tokens for other checkpoints |
 
+`server/api` — [`config.py`](server/api/app/core/config.py):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `APP_ENV` | `development` | Selects the env file; also relaxes auth |
+| `LLM_HOST` / `LLM_PORT` | `127.0.0.1` / `8000` | Bind address |
+| `LLM_LLM_ENGINE_URL` | `http://127.0.0.1:9000` | Where `server/llm` listens |
+| `LLM_SUPABASE_URL` | — | Project URL |
+| `LLM_SUPABASE_SERVICE_KEY` | — | Service-role key. Never ships to the browser |
+| `LLM_SUPABASE_JWT_SECRET` | — | Verifies incoming bearer tokens |
+| `LLM_MAX_TOKENS` | `1024` | Budget sent per reply; the engine's own default is 200 |
+| `LLM_CORS_ORIGINS` | `["http://localhost:3000", "http://127.0.0.1:3000"]` | Must list the SPA's origin |
+
+The doubled `LLM_LLM_ENGINE_URL` is not a typo: the prefix is `LLM_` and the
+setting is `llm_engine_url`.
+
 ```shell
-LLM_MODEL_ID=mlx-community/Qwen2.5-7B-Instruct-4bit LLM_PORT=9000 uv run llm-server
+LLM_MODEL_ID=mlx-community/Qwen2.5-7B-Instruct-4bit uv run llm-engine
 ```
 
-Frontend configuration lives in `apps/web/.env` — see `.env.example`.
+Frontend configuration lives in `apps/web/.env.development` — see
+`.env.example`.
+
+> **`APP_ENV=development` disables authentication** on the gateway: requests
+> without a token resolve to a fixed dev user and chats are not filtered by
+> owner. Never point a development gateway at production data.
 
 ## Project structure
 
@@ -220,31 +270,38 @@ Frontend configuration lives in `apps/web/.env` — see `.env.example`.
 pyproject.toml           uv workspace root — no package of its own
 uv.lock                  Committed; one lock for every Python member
 Makefile                 Single entrypoint across both package managers
-apps/
-  server/                Python inference API — distribution "llm-server"
-    llm_server/
-      __main__.py        Entrypoint behind the `llm-server` script
-      asgi.py            Module-level app for import-string process managers
-      repl.py            `llm-repl`, a worked SSE client
+server/
+  llm/                   Inference engine — distribution "llm-engine"
+    llm_engine/
+      __main__.py        Entrypoint behind the `llm-engine` script
       config.py          Env-driven settings
       app.py             App factory: lifespan, middleware, error mapping
       errors.py          Domain errors, decoupled from HTTP
       observability.py   Request-id logging
       engine/            Model runtimes (base.py defines the protocol)
-      services/          Orchestration; agent logic belongs here
       api/               Schemas, dependencies, routers
+  api/                   BFF gateway — distribution "api-server"
+    app/
+      main.py            FastAPI app, CORS, routers
+      core/              Settings and JWT verification
+      routers/           /v1/chats — CRUD plus the streaming turn
+      services/          Supabase client, chat persistence
+      agent/             LangGraph graph, tools, AI SDK stream adapter
+apps/
   web/                   Nuxt 4 chat frontend — bun, own lockfile
+supabase/migrations/     Schema, RLS, pgvector
 packages/                Future Python members (benchmarks)
 ```
 
 ## Deployment
 
-Split, and neither half is Docker.
+Split three ways, and none of it is Docker.
 
-| Half | Where | How |
+| Piece | Where | How |
 | --- | --- | --- |
 | `apps/web` | Vercel | Nitro's `vercel` preset, no code changes — [ADR 0002](docs/adr/0002-host-the-frontend-on-vercel.md) |
-| `apps/server` | Natively, on a Mac | `uv run llm-server`, reached over a tunnel — [ADR 0001](docs/adr/0001-run-the-server-natively.md) |
+| `server/api` | Any host with a persistent process | Holds the service-role key — [ADR 0006](docs/adr/0006-move-the-bff-into-a-python-gateway.md) |
+| `server/llm` | Natively, on a Mac | `uv run llm-engine`, reached over a tunnel — [ADR 0001](docs/adr/0001-run-the-server-natively.md) |
 
 The reasoning and the rejected alternatives live in
 [`docs/adr/`](docs/adr/README.md).
@@ -255,7 +312,14 @@ The reasoning and the rejected alternatives live in
   be containerized — [ADR 0001](docs/adr/0001-run-the-server-natively.md).
 - **One generation at a time.** Excess load is shed with `503`, not queued —
   [ADR 0003](docs/adr/0003-serialize-generation.md).
-- **No tool calling.** Chat completions only.
+- **No tool calling in practice.** The gateway binds web-search and RAG tools,
+  but Mamba-Codestral is a base code model and does not emit tool calls. The
+  path works; this checkpoint does not exercise it.
+- **The model picker is decorative.** The UI lists three hosted models; the
+  engine ignores the name and always serves the loaded checkpoint.
+- **Output quality is bounded by a 4-bit base checkpoint.** Codestral Mamba is
+  not instruction-tuned, so it paraphrases prompts back, and quantization
+  occasionally emits a stray non-ASCII token mid-identifier.
 - **Text only.** The schema models image parts; no vision engine exists yet.
 - **This checkpoint ships a wrong stop token**, and the engine corrects it at
   load — [ADR 0004](docs/adr/0004-reconcile-eos-tokens.md).
@@ -264,13 +328,16 @@ The reasoning and the rejected alternatives live in
 
 - [x] OpenAI-compatible streaming inference server
 - [x] Admission control, cancellation, readiness probes
-- [ ] Point the Nuxt frontend at the local server instead of hosted models
+- [x] uv workspace, committed lockfile, CI on both halves
+- [x] Point the Nuxt frontend at the local model instead of hosted ones
+- [x] Supabase-backed persistence, auth, and a LangGraph agent gateway
+- [ ] Replace the placeholder model registry with what the deployment serves
 - [ ] Coding-focused system prompt in place of the template's generic persona
 - [ ] Benchmark Mamba vs. a comparable transformer on latency, memory, and
       long-context behaviour — the experiment this project exists for
-- [x] uv workspace, committed lockfile, CI on both halves
-- [ ] Automated test suite for the server
-- [ ] Deploy the frontend (Vercel) and expose the local server over a tunnel
+- [ ] Automated test suite — `testpaths` are configured but empty, so CI's
+      green `pytest` currently proves nothing
+- [ ] Deploy the frontend (Vercel), host the gateway, tunnel to the engine
 
 ## License
 
