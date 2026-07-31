@@ -41,12 +41,12 @@ pre-push:
 
     # Full sweep, not just staged: --no-verify commits land here eventually.
     - name: ruff
-      run: uv run ruff check apps/server
+      run: uv run ruff check server/api server/llm
 
     # No suite committed yet; pytest exits 5 on an empty collection.
     # Delete the guard with the first test file.
     - name: pytest
-      run: if [ -d apps/server/tests ]; then uv run pytest; fi
+      run: if [ -d server/api/tests ] || [ -d server/llm/tests ]; then uv run pytest; fi
 
     # ~7 s. Too slow for pre-commit, cheap next to a failed CI run.
     - name: typecheck
