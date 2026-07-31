@@ -55,7 +55,7 @@ flowchart TD
 
 `streamText({ model: 'openai/gpt-5-nano' })` uses the bare-string form, which
 resolves through the **Vercel AI Gateway** via `AI_GATEWAY_API_KEY`. Nothing
-here talks to `server/` yet. Four changes:
+here talks to `apps/server/` yet. Four changes:
 
 1. `shared/utils/models.ts` — add e.g. `local/mamba-codestral`. The zod
    `refine` in the chat route validates against this list.

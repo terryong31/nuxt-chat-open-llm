@@ -29,6 +29,7 @@ behind an OpenAI-compatible API with a Nuxt chat frontend.
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Project structure](#project-structure)
+- [Deployment](#deployment)
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap)
 - [License](#license)
@@ -68,7 +69,7 @@ flowchart LR
         SDK --> DB
     end
 
-    subgraph srv["server · FastAPI"]
+    subgraph srv["apps/server · FastAPI"]
         API["api/<br/>OpenAI schemas"]
         SVC["services/<br/>orchestration"]
         ENG["engine/<br/>mlx-lm"]
@@ -112,29 +113,26 @@ it at vLLM, Ollama, or a remote endpoint means writing one class against the
 - **Apple Silicon Mac.** MLX targets Metal; there is no CUDA or CPU fallback.
 - **~8 GB free RAM** — the 4-bit checkpoint is 3.82 GB resident.
 - **~4 GB disk** for the Hugging Face cache.
-- Python 3.12+ and [Bun](https://bun.sh/) (or pnpm) for the frontend.
+- [uv](https://docs.astral.sh/uv/) for the Python half and
+  [Bun](https://bun.sh/) for the frontend. uv installs the pinned Python
+  (3.14) itself — no system Python needed.
 
 ## Installation
 
 ```shell
 git clone <your-repo-url> ssm-mistral-mamba-chatbot
 cd ssm-mistral-mamba-chatbot
+make setup
 ```
 
-**Inference server**
+`make setup` runs `uv sync` and `bun install`. The Python side is a uv
+workspace: one `.venv` at the repo root shared by every member, resolved from
+the committed `uv.lock`.
+
+The frontend also needs an env file:
 
 ```shell
-cd server
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
-
-**Frontend**
-
-```shell
-cd apps/web
-bun install
-cp .env.example .env     # NUXT_SESSION_PASSWORD must be ≥32 characters
+cp apps/web/.env.example apps/web/.env    # NUXT_SESSION_PASSWORD must be ≥32 chars
 ```
 
 ## Usage
@@ -143,13 +141,13 @@ Start the server. The first run downloads the checkpoint (~3.8 GB); later
 starts take a few seconds.
 
 ```shell
-cd server && .venv/bin/python main.py
+make dev          # or: uv run llm-server
 ```
 
 Talk to it from the terminal:
 
 ```shell
-.venv/bin/python test.py
+make repl         # or: uv run llm-repl
 ```
 
 Or directly over HTTP:
@@ -181,7 +179,7 @@ for chunk in stream:
 Run the frontend in a second terminal:
 
 ```shell
-cd apps/web && bun run dev     # http://localhost:3000
+make web          # http://localhost:3000
 ```
 
 ### Endpoints
@@ -196,7 +194,8 @@ cd apps/web && bun run dev     # http://localhost:3000
 ## Configuration
 
 Server settings are `LLM_`-prefixed environment variables or lines in
-`server/.env`. Defaults live in [`server/llm_server/config.py`](server/llm_server/config.py).
+`apps/server/.env`. Defaults live in
+[`apps/server/llm_server/config.py`](apps/server/llm_server/config.py).
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -210,7 +209,7 @@ Server settings are `LLM_`-prefixed environment variables or lines in
 | `LLM_EXTRA_EOS_TOKENS` | `[]` | Extra stop tokens for other checkpoints |
 
 ```shell
-LLM_MODEL_ID=mlx-community/Qwen2.5-7B-Instruct-4bit LLM_PORT=9000 python main.py
+LLM_MODEL_ID=mlx-community/Qwen2.5-7B-Instruct-4bit LLM_PORT=9000 uv run llm-server
 ```
 
 Frontend configuration lives in `apps/web/.env` — see `.env.example`.
@@ -218,34 +217,48 @@ Frontend configuration lives in `apps/web/.env` — see `.env.example`.
 ## Project structure
 
 ```
-server/                  Python inference API
-  main.py                Entrypoint
-  llm_server/
-    config.py            Env-driven settings
-    app.py               App factory: lifespan, middleware, error mapping
-    errors.py            Domain errors, decoupled from HTTP
-    observability.py     Request-id logging
-    engine/              Model runtimes (base.py defines the protocol)
-    services/            Orchestration; agent logic belongs here
-    api/                 Schemas, dependencies, routers
-apps/web/                Nuxt 4 chat frontend
+pyproject.toml           uv workspace root — no package of its own
+uv.lock                  Committed; one lock for every Python member
+Makefile                 Single entrypoint across both package managers
+apps/
+  server/                Python inference API — distribution "llm-server"
+    llm_server/
+      __main__.py        Entrypoint behind the `llm-server` script
+      asgi.py            Module-level app for import-string process managers
+      repl.py            `llm-repl`, a worked SSE client
+      config.py          Env-driven settings
+      app.py             App factory: lifespan, middleware, error mapping
+      errors.py          Domain errors, decoupled from HTTP
+      observability.py   Request-id logging
+      engine/            Model runtimes (base.py defines the protocol)
+      services/          Orchestration; agent logic belongs here
+      api/               Schemas, dependencies, routers
+  web/                   Nuxt 4 chat frontend — bun, own lockfile
+packages/                Future Python members (benchmarks)
 ```
+
+## Deployment
+
+Split, and neither half is Docker.
+
+| Half | Where | How |
+| --- | --- | --- |
+| `apps/web` | Vercel | Nitro's `vercel` preset, no code changes — [ADR 0002](docs/adr/0002-host-the-frontend-on-vercel.md) |
+| `apps/server` | Natively, on a Mac | `uv run llm-server`, reached over a tunnel — [ADR 0001](docs/adr/0001-run-the-server-natively.md) |
+
+The reasoning and the rejected alternatives live in
+[`docs/adr/`](docs/adr/README.md).
 
 ## Known limitations
 
-- **Apple Silicon only.** MLX has no CUDA or CPU backend.
-- **One generation at a time.** MLX is not thread-safe, and a single 7B model
-  gains nothing from interleaving. The server is deliberately single-process
-  and sheds excess load rather than queueing it. Scale by adding machines
-  behind a proxy, not workers in front of one GPU.
-- **No tool calling.** The server implements chat completions only.
+- **Apple Silicon only.** MLX has no CUDA or CPU backend, and the server cannot
+  be containerized — [ADR 0001](docs/adr/0001-run-the-server-natively.md).
+- **One generation at a time.** Excess load is shed with `503`, not queued —
+  [ADR 0003](docs/adr/0003-serialize-generation.md).
+- **No tool calling.** Chat completions only.
 - **Text only.** The schema models image parts; no vision engine exists yet.
-- **This checkpoint ships a wrong stop token.** Its `config.json` declares
-  `eos_token_id: 0` (`<unk>`) when the real end-of-turn token is `2` (`</s>`).
-  `mlx_lm` trusts `config.json`, so out of the box the model emits a literal
-  `</s>` as text and rambles to `max_tokens` on every reply. The engine
-  reconciles this at load and logs a warning — worth knowing if you point it at
-  another community conversion.
+- **This checkpoint ships a wrong stop token**, and the engine corrects it at
+  load — [ADR 0004](docs/adr/0004-reconcile-eos-tokens.md).
 
 ## Roadmap
 
@@ -255,8 +268,9 @@ apps/web/                Nuxt 4 chat frontend
 - [ ] Coding-focused system prompt in place of the template's generic persona
 - [ ] Benchmark Mamba vs. a comparable transformer on latency, memory, and
       long-context behaviour — the experiment this project exists for
+- [x] uv workspace, committed lockfile, CI on both halves
 - [ ] Automated test suite for the server
-- [ ] Packaging / deployment story
+- [ ] Deploy the frontend (Vercel) and expose the local server over a tunnel
 
 ## License
 
