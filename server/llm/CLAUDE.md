@@ -114,6 +114,11 @@ milliseconds without the checkpoint.
 - **The `[TOOL_CALLS]` marker arrives split across chunks**, like `</s>` before
   it. `engine/toolcalls.py` holds back any tail that could still become a
   marker; a plain `in` check leaks `[TOOL` into the answer.
+- **The marker goes missing under prompt pressure.** A system prompt plus more
+  than one tool is enough: the model emits a correct call but no marker, leaving
+  a bare JSON array as the whole reply. `ToolCallSplitter` accepts that *only*
+  when every name was actually offered — it also invents tools, and those must
+  stay text. Do not relax the name check.
 - **`arguments` goes on the wire as a JSON string**, not an object. That is
   what OpenAI does and what langchain-openai parses; an object binds nothing
   and reports no error.

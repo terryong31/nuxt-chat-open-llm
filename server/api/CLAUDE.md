@@ -117,9 +117,13 @@ outside development.
   so `run_tools` is live. Compliance depends on the question, not on the tool
   count — expect `should_use_tools` to route to `save_reply` more often than a
   hosted model would.
-- **The system prompt is folded into the first user turn** by the engine's
-  Mistral formatting, so it is charged to the user's own message. Keep it
-  short; that is why it is not a page of persona.
+- **`SYSTEM_PROMPT` is two words, and that is measured, not lazy.** On this
+  checkpoint a persona line ("You are a coding assistant") or any instruction
+  about the shape of the answer stops it emitting tool calls entirely; `Be
+  concise.` does not, and still yields fenced code. The table is in
+  [ADR 0007](../../docs/adr/0007-tool-calling-in-the-engine.md). It is also
+  folded into the user's first turn by the engine's Mistral formatting, so every
+  word is charged to their message. Measure before growing it.
 
 ## Config
 

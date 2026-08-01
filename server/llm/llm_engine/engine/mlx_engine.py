@@ -228,7 +228,7 @@ class MlxEngine:
                     # Holds back text that could still be the start of a
                     # `[TOOL_CALLS]` marker, so a marker split across chunks
                     # never leaks into the visible answer.
-                    splitter = ToolCallSplitter()
+                    splitter = ToolCallSplitter(t.name for t in tools)
                     response = None
                     for response in stream_generate(
                         self._model,

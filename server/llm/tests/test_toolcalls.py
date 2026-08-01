@@ -102,3 +102,72 @@ def test_openai_style_function_nesting_is_accepted():
     calls = parse_tool_calls('[{"function": {"name": "f", "arguments": {"q": 1}}}]')
     assert calls[0].name == "f"
     assert calls[0].arguments == {"q": 1}
+
+
+# --- the marker-less fallback -------------------------------------------------
+#
+# Under context pressure the checkpoint emits a correct call but drops the
+# marker, leaving a bare array as the whole reply. Accepted only when every name
+# was actually offered.
+
+
+def _run_with_tools(chunks: list[str], names=("web_search",)) -> tuple[str, list]:
+    splitter = ToolCallSplitter(names)
+    visible = "".join(splitter.feed(c) for c in chunks)
+    trailing, calls = splitter.finish()
+    return visible + trailing, calls
+
+
+def test_bare_call_naming_an_offered_tool_is_recovered():
+    text, calls = _run_with_tools([PAYLOAD])
+    assert text == ""
+    assert [c.name for c in calls] == ["web_search"]
+
+
+def test_bare_call_recovered_when_split_across_chunks():
+    text, calls = _run_with_tools([PAYLOAD[:20], PAYLOAD[20:]])
+    assert text == ""
+    assert [c.name for c in calls] == ["web_search"]
+
+
+def test_invented_tool_name_stays_text():
+    """The model hallucinates tools; those must not be executed."""
+    bare = '[{"name": "weather", "arguments": {"location": "Paris"}}]'
+    text, calls = _run_with_tools([bare])
+    assert calls == []
+    assert text == bare
+
+
+def test_one_invented_name_rejects_the_whole_reply():
+    bare = (
+        '[{"name": "web_search", "arguments": {}}, {"name": "nope", "arguments": {}}]'
+    )
+    text, calls = _run_with_tools([bare])
+    assert calls == []
+    assert text == bare
+
+
+def test_prose_is_never_mistaken_for_a_call():
+    text, calls = _run_with_tools(["The latest version of Nuxt is 4.0."])
+    assert calls == []
+    assert text == "The latest version of Nuxt is 4.0."
+
+
+def test_json_in_a_fenced_block_is_not_a_call():
+    """A fenced answer opens with backticks, so it streams as ordinary text."""
+    answer = '```json\n[{"name": "web_search"}]\n```'
+    text, calls = _run_with_tools([answer])
+    assert calls == []
+    assert text == answer
+
+
+def test_prose_still_streams_incrementally():
+    """Only replies that could be a bare call are ever withheld."""
+    splitter = ToolCallSplitter(["web_search"])
+    assert splitter.feed("Here is ") == "Here is "
+
+
+def test_fallback_is_off_when_no_tools_were_offered():
+    text, calls = _run([PAYLOAD])
+    assert calls == []
+    assert text == PAYLOAD

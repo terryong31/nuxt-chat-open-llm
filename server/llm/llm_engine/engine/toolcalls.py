@@ -22,6 +22,7 @@ import json
 import logging
 import secrets
 import string
+from collections.abc import Iterable
 
 from .base import ToolCall
 
@@ -104,12 +105,25 @@ class ToolCallSplitter:
     """Feeds text through, holding back anything that might start a marker.
 
     Usage is `feed()` per chunk, then `finish()` once the model stops.
+
+    `allowed_names` enables a second, deliberately narrow recovery path. Under
+    context pressure -- a system prompt plus more than one tool is enough --
+    this checkpoint emits a correct call but drops the `[TOOL_CALLS]` marker,
+    leaving a bare JSON array as the entire answer. The intent is intact and
+    only the framing is missing, so a reply that is *nothing but* a call naming
+    a tool that was actually offered is accepted as one. The name check is what
+    makes that safe: the model also invents tools ("weather"), and those stay
+    text.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, allowed_names: Iterable[str] = ()) -> None:
         self._pending = ""  # held back: could be a partial marker
         self._payload: list[str] = []  # everything after the marker
         self._found = False
+        self._allowed = frozenset(allowed_names)
+        # Only worth buffering when there is something a bare call could name.
+        self._maybe_bare = bool(self._allowed)
+        self._bare = ""
 
     @property
     def found_tool_call(self) -> bool:
@@ -128,15 +142,36 @@ class ToolCallSplitter:
             visible = self._pending[:index]
             self._payload.append(self._pending[index + len(MARKER) :])
             self._pending = ""
-            return visible
+            self._maybe_bare = False
+            return self._bare + visible
 
         hold = _partial_marker_len(self._pending)
         if hold == 0:
             visible, self._pending = self._pending, ""
-            return visible
-        visible = self._pending[:-hold]
-        self._pending = self._pending[-hold:]
-        return visible
+        else:
+            visible = self._pending[:-hold]
+            self._pending = self._pending[-hold:]
+        return self._release(visible)
+
+    def _release(self, text: str) -> str:
+        """Withhold output only while it could still be a bare tool call.
+
+        An answer that opens with anything other than `[` or `{` cannot be one,
+        so ordinary prose streams token by token and never waits.
+        """
+        if not self._maybe_bare:
+            return text
+
+        self._bare += text
+        stripped = self._bare.lstrip()
+        if not stripped:
+            return ""
+        if stripped[0] in "[{":
+            return ""
+
+        self._maybe_bare = False
+        out, self._bare = self._bare, ""
+        return out
 
     def finish(self) -> tuple[str, list[ToolCall]]:
         """End of stream. Returns (remaining visible text, tool calls).
@@ -146,12 +181,23 @@ class ToolCallSplitter:
         marker and payload are handed back as text: a malformed call should look
         like a bad answer, not a missing one.
         """
-        if not self._found:
-            trailing, self._pending = self._pending, ""
-            return trailing, []
+        trailing, self._pending = self._pending, ""
 
-        payload = "".join(self._payload)
-        calls = parse_tool_calls(payload)
-        if not calls:
-            return MARKER + payload, []
-        return "", calls
+        if self._found:
+            payload = "".join(self._payload)
+            calls = parse_tool_calls(payload)
+            if not calls:
+                return MARKER + payload, []
+            return "", calls
+
+        if self._maybe_bare:
+            text = self._bare + trailing
+            self._bare = ""
+            self._maybe_bare = False
+            calls = parse_tool_calls(text)
+            # All or nothing: one invented name makes the whole reply suspect.
+            if calls and all(c.name in self._allowed for c in calls):
+                return "", calls
+            return text, []
+
+        return trailing, []

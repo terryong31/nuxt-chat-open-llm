@@ -50,7 +50,8 @@ longer turn out to be the start of one.
 | Option | Why not |
 | --- | --- |
 | Execute tools inside `server/llm` | Pins the only generation worker on a network call and inverts `api → engine` |
-| Parse the code-form call the model sometimes writes (`web_search(query=…)`) | Non-standard, unparseable in general, and rewards the behaviour we want to suppress |
+| Parse the code-form call the model writes (`web_search(query=…)`) | Python source, not data. Parsing it means evaluating arbitrary expressions to recover arguments, and every checkpoint spells it differently. Distinct from the bare-JSON fallback below, which is the model's own structured output with only the marker missing |
+| Buffer the whole reply so any output can be re-read as a call | Kills streaming for every request to rescue a minority. The fallback withholds only replies that open with `[` or `{` |
 | Stream `tool_calls` as argument fragments, as OpenAI does | The engine only knows the call once the JSON array is complete; fragments would be invented, and every client accepts one whole chunk |
 | Drop the tools instead, and the prompt text with them | The capability was one layer of plumbing away; deleting it would have been the expensive mistake |
 | Depend on `mistral-common` at runtime for formatting | A heavy dependency to emit four constant markers |
@@ -61,8 +62,35 @@ longer turn out to be the start of one.
   a bug to chase. Measured at temperature 0: "what is the weather in Paris"
   produces a proper call, "who won the 2026 World Cup final" produces Python
   prose. The question matters more than the tool count — weather is the
-  canonical function-calling example in Mistral's training data. A system-prompt
-  nudge lifted one case in three. A tool-tuned checkpoint works unchanged.
+  canonical function-calling example in Mistral's training data. A tool-tuned
+  checkpoint works unchanged.
+
+- **Prompt pressure suppresses the marker, and the system prompt is the biggest
+  source of it.** Measured against the live engine, same question, temperature 0:
+
+  | system prompt | tool call |
+  | --- | --- |
+  | *(none)* | yes |
+  | `Be concise.` | yes |
+  | `Hi.` | yes |
+  | `You are a helpful assistant.` | no |
+  | `You are a coding assistant.` | no |
+  | `Be concise. Put code in a fenced block…` | no |
+  | `Be concise. Do not invent facts…` | no |
+
+  Two things break it: persona framing and any instruction about the shape of
+  the answer. Length is not the variable — `Hi.` is fine and a one-line format
+  rule is not. This is why `SYSTEM_PROMPT` is two words. It is not an oversight,
+  and growing it costs tool calls; measure before editing it.
+
+- **A bare JSON array is accepted as a tool call when every name was offered.**
+  Under that pressure the model emits a correct call and simply drops the
+  `[TOOL_CALLS]` marker, leaving the array as the whole reply. The intent is
+  intact, so refusing it would discard a working call over missing framing. The
+  name check carries the safety: the model also invents tools — a `weather` tool
+  that was never offered — and those stay text. One unknown name rejects the
+  whole reply. Only replies opening with `[` or `{` are withheld, so ordinary
+  prose still streams token by token.
 - `arguments` must be serialised as a JSON **string**, matching OpenAI.
   langchain-openai parses it back; emitting an object binds nothing and reports
   no error.
