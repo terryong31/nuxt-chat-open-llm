@@ -49,6 +49,22 @@ build-stg:  ## Build Nuxt frontend for STAGING
 build-prod:  ## Build Nuxt frontend for PRODUCTION
 	cd $(WEB) && bun run build:prod
 
+MODEL := mlx-community/Mamba-Codestral-7B-v0.1-4bit
+ADAPTERS := packages/finetune/adapters
+
+finetune-data:  ## Regenerate LoRA training data
+	uv run finetune-data
+
+finetune:  ## LoRA fine-tune for tool calling — STOP `make llm` first, it needs the RAM
+	uv run python -m mlx_lm lora --model $(MODEL) --train \
+		--data packages/finetune/data --adapter-path $(ADAPTERS) \
+		--fine-tune-type lora --num-layers 8 --batch-size 1 \
+		--iters 300 --learning-rate 1e-4 --max-seq-length 1024 \
+		--steps-per-report 20 --steps-per-eval 100 --grad-checkpoint
+
+finetune-serve:  ## Run the engine with the trained adapter on :9000
+	APP_ENV=development LLM_ADAPTER_PATH=$(ADAPTERS) uv run llm-engine
+
 lint:  ## Lint Python and JavaScript packages
 	uv run ruff format --check server/api server/llm
 	uv run ruff check server/api server/llm

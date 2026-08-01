@@ -5,6 +5,7 @@ requires-python = ">=3.14"
 [manifest]
 members = [
     "api-server",
+    "finetune",
     "llm-engine",
 ]
 
@@ -464,6 +465,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/f6/57/3ba6e6cb097f85b85
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/e8/72f8cef9fdfeffe06213fe8508039396ee48daa0e3259457ed766173bfd6/filelock-3.32.2-py3-none-any.whl", hash = "sha256:87dd94cf281e586d135fa51132b8e3d9a598b316e90377a288663c9321036c82", size = 98830, upload-time = "2026-07-29T22:46:03.52Z" },
 ]
+
+[[package]]
+name = "finetune"
+version = "0.1.0"
+source = { editable = "packages/finetune" }
+dependencies = [
+    { name = "llm-engine" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "llm-engine", editable = "server/llm" }]
 
 [[package]]
 name = "flupy"

@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import asynccontextmanager, suppress
+from functools import partial
 
 # pyrefly: ignore [missing-import]
 import mlx.core as mx
@@ -123,8 +124,12 @@ class MlxEngine:
         # responsive to signals -- otherwise Ctrl-C is swallowed for the entire
         # multi-GB read and the process has to be killed.
         loop = asyncio.get_running_loop()
+        adapter = self._settings.adapter_path or None
+        if adapter:
+            log.info("applying LoRA adapter from %s", adapter)
         self._model, self._tokenizer = await loop.run_in_executor(
-            self._worker, load, self.model_id
+            self._worker,
+            partial(load, self.model_id, adapter_path=adapter),
         )
         _reconcile_eos_tokens(self._tokenizer, self._settings.extra_eos_tokens)
         log.info(
