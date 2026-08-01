@@ -55,6 +55,10 @@ api/routers/      chat.py, models.py, health.py
 Dependency direction is strictly `api → engine`. Nothing in `engine/` may
 import FastAPI.
 
+`engine/toolcalls.py` splits a `[TOOL_CALLS]` marker out of the token stream.
+It imports neither mlx nor FastAPI, which is what lets its tests run in
+milliseconds without the checkpoint.
+
 ## Invariants — do not break these
 
 - **One generation at a time.** MLX is not thread-safe. Serialization is
@@ -78,6 +82,10 @@ import FastAPI.
 - **No agent logic here.** Tool loops and retrieval belong in `server/api`; a
   graph node awaiting a web search from inside this process would hold the only
   worker slot for its duration ([ADR 0006](../../docs/adr/0006-move-the-bff-into-a-python-gateway.md)).
+- **Report tool calls, never execute them.** The engine parses the model's
+  intent and returns it; running the tool is the gateway's job. Executing one
+  here would pin the single generation worker on a network request, which is
+  exactly what [ADR 0003](../../docs/adr/0003-serialize-generation.md) forbids.
 
 ## Gotchas
 
@@ -96,8 +104,19 @@ import FastAPI.
 - **`mlx_lm.generate` is a function shadowing the module.** Use
   `importlib.import_module("mlx_lm.generate")` to introspect it.
 - **`top_p=0.0` means disabled in mlx_lm**, not 1.0.
-- **Not tool-trained.** The gateway binds tool schemas, but this checkpoint is
-  a base code model — it will not emit tool calls.
+- **Tool calls work, but compliance is uneven.** The checkpoint emits proper
+  Mistral `[TOOL_CALLS]` JSON — *if* `[AVAILABLE_TOOLS]` sits immediately before
+  the final `[INST]`. Anywhere else and it writes the call out as Python
+  instead. Measured at temperature 0: "weather in Paris" calls the tool, "who
+  won the 2026 World Cup final" does not. The question matters more than the
+  tool count; weather is the canonical example in Mistral's training data.
+  That is a model property, not a bug to chase ([ADR 0007](../../docs/adr/0007-tool-calling-in-the-engine.md)).
+- **The `[TOOL_CALLS]` marker arrives split across chunks**, like `</s>` before
+  it. `engine/toolcalls.py` holds back any tail that could still become a
+  marker; a plain `in` check leaks `[TOOL` into the answer.
+- **`arguments` goes on the wire as a JSON string**, not an object. That is
+  what OpenAI does and what langchain-openai parses; an object binds nothing
+  and reports no error.
 - Images are modelled end-to-end (`ImagePart`) but rejected with 400 —
   `MlxEngine.supports_images = False`. Vision means a new engine class.
 
@@ -121,8 +140,14 @@ puts every caller back on the 200-token default with nothing in the log.
 
 ## Testing
 
-`pytest` + `pytest-asyncio` are installed; no suite committed yet. Tests go in
-`server/llm/tests/`, which `pyproject.toml` already lists in `testpaths`.
+`server/llm/tests/` — 28 tests, ~1 s, no weights and no GPU. Run `uv run pytest`.
+
+- `test_toolcalls.py` — the marker split at every byte boundary, malformed
+  payloads, id generation.
+- `test_prompts.py` — `[INST]` rendering and, above all, that the tools block
+  lands immediately before the final instruction.
+- `test_chat_api.py` — the OpenAI wire shape through `create_app` with a fake
+  engine.
 
 Swap in a fake engine rather than loading weights:
 

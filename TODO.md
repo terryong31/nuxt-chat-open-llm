@@ -2,9 +2,9 @@
 2. ~~Langgraph integration~~ done — `server/api/app/agent/`
 3. ~~Integrate supabase~~ done — see [ADR 0006](docs/adr/0006-move-the-bff-into-a-python-gateway.md)
 4. Include test suites: unit, integration, lint, ruff and etc
-   - `testpaths` already point at `server/{api,llm}/tests`; neither exists, so
-     `pytest` collects nothing and exits zero. CI is green on no tests.
-   - Start with `agent/stream.py` — a pure generator, no model or DB needed.
+   - `server/llm/tests/` now exists — 28 tests, no weights, ~1 s.
+   - `server/api/tests/` still missing. Start with `agent/stream.py`: a pure
+     generator, no model or DB needed.
 5. Include security (Cloudflare captcha, slowapi)
    - `APP_ENV=development` currently skips auth entirely and disables
      per-user filtering in `ChatService`.

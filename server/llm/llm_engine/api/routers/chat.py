@@ -10,25 +10,77 @@ from llm_engine.api.schemas import (
     ChatCompletionChoiceMessage,
     ChatCompletionRequest,
     ChatCompletionResponse,
+    ChatMessage,
+    FunctionCall,
+    ToolCallSpec,
 )
-from llm_engine.engine.base import Completed, Delta, GenerationParams, Message
+from llm_engine.engine.base import (
+    Completed,
+    Delta,
+    GenerationParams,
+    Message,
+    TextPart,
+    ToolCall,
+    ToolCalls,
+    ToolSpec,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-def _to_messages(raw: list[dict]) -> list[Message]:
-    """Convert OpenAI-style dicts to typed Message objects."""
-    msgs = []
+def _to_messages(raw: list[ChatMessage]) -> list[Message]:
+    """Convert wire messages to typed Message objects, tool turns included."""
+    msgs: list[Message] = []
     for m in raw:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-        if isinstance(content, list):
-            # Multipart content — join text parts
-            content = " ".join(
-                p.get("text", "") for p in content if p.get("type") == "text"
+        content = m.content or ""
+        tool_calls = tuple(
+            ToolCall(
+                id=tc.id,
+                name=tc.function.name,
+                arguments=_loads_or_empty(tc.function.arguments),
             )
-        msgs.append(Message.text(role, content))
+            for tc in (m.tool_calls or [])
+        )
+        msgs.append(
+            Message(
+                role=m.role,
+                content=(TextPart(content),),
+                tool_calls=tool_calls,
+                tool_call_id=m.tool_call_id,
+            )
+        )
     return msgs
+
+
+def _loads_or_empty(raw: str) -> dict:
+    try:
+        value = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _to_tool_specs(body: ChatCompletionRequest) -> list[ToolSpec]:
+    if body.tool_choice == "none" or not body.tools:
+        return []
+    return [
+        ToolSpec(
+            name=t.function.name,
+            description=t.function.description,
+            parameters=t.function.parameters,
+        )
+        for t in body.tools
+    ]
+
+
+def _to_wire_calls(calls: tuple[ToolCall, ...]) -> list[ToolCallSpec]:
+    return [
+        ToolCallSpec(
+            id=c.id,
+            function=FunctionCall(name=c.name, arguments=json.dumps(c.arguments)),
+        )
+        for c in calls
+    ]
 
 
 @router.post("/completions")
@@ -45,16 +97,21 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         repetition_penalty=settings.repetition_penalty,
         repetition_context_size=settings.repetition_context_size,
     )
-    messages = _to_messages(
-        [{"role": m.role, "content": m.content} for m in body.messages]
-    )
+    messages = _to_messages(body.messages)
+    tools = _to_tool_specs(body)
 
     if not body.stream:
         # Non-streaming completion
         response_text = ""
-        async for event in engine.stream_chat(messages, params):
+        tool_calls: list[ToolCallSpec] = []
+        finish_reason = "stop"
+        async for event in engine.stream_chat(messages, params, tools):
             if isinstance(event, Delta):
                 response_text += event.text
+            elif isinstance(event, ToolCalls):
+                tool_calls = _to_wire_calls(event.calls)
+            elif isinstance(event, Completed):
+                finish_reason = event.finish_reason
 
         return ChatCompletionResponse(
             id=f"chatcmpl-{int(time.time())}",
@@ -64,9 +121,12 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 ChatCompletionChoice(
                     index=0,
                     message=ChatCompletionChoiceMessage(
-                        role="assistant", content=response_text
+                        role="assistant",
+                        # OpenAI sends null content, not "", alongside a call.
+                        content=response_text or (None if tool_calls else ""),
+                        tool_calls=tool_calls or None,
                     ),
-                    finish_reason="stop",
+                    finish_reason=finish_reason,
                 )
             ],
         )
@@ -76,33 +136,41 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         created_ts = int(time.time())
         chat_id = f"chatcmpl-{created_ts}"
 
-        async for event in engine.stream_chat(messages, params):
+        def chunk(delta: dict, finish: str | None = None) -> str:
+            data = {
+                "id": chat_id,
+                "object": "chat.completion.chunk",
+                "created": created_ts,
+                "model": body.model,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+            }
+            return f"data: {json.dumps(data)}\n\n"
+
+        async for event in engine.stream_chat(messages, params, tools):
             if isinstance(event, Delta):
-                data = {
-                    "id": chat_id,
-                    "object": "chat.completion.chunk",
-                    "created": created_ts,
-                    "model": body.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": event.text},
-                            "finish_reason": None,
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(data)}\n\n"
+                yield chunk({"content": event.text})
+            elif isinstance(event, ToolCalls):
+                # Sent whole rather than as argument fragments: the engine only
+                # knows the call once the JSON array is complete, and every
+                # OpenAI client accepts a single fully-formed chunk.
+                yield chunk(
+                    {
+                        "tool_calls": [
+                            {
+                                "index": i,
+                                "id": c.id,
+                                "type": "function",
+                                "function": {
+                                    "name": c.function.name,
+                                    "arguments": c.function.arguments,
+                                },
+                            }
+                            for i, c in enumerate(_to_wire_calls(event.calls))
+                        ]
+                    }
+                )
             elif isinstance(event, Completed):
-                final_data = {
-                    "id": chat_id,
-                    "object": "chat.completion.chunk",
-                    "created": created_ts,
-                    "model": body.model,
-                    "choices": [
-                        {"index": 0, "delta": {}, "finish_reason": event.finish_reason}
-                    ],
-                }
-                yield f"data: {json.dumps(final_data)}\n\n"
+                yield chunk({}, event.finish_reason)
 
         yield "data: [DONE]\n\n"
 

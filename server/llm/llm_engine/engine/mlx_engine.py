@@ -27,8 +27,18 @@ from mlx_lm.sample_utils import make_logits_processors, make_sampler
 
 from ..config import Settings
 from ..errors import EngineBusy, EngineNotReady
-from .base import Completed, Delta, GenerationParams, Message, StreamEvent, Usage
+from .base import (
+    Completed,
+    Delta,
+    GenerationParams,
+    Message,
+    StreamEvent,
+    ToolCalls,
+    ToolSpec,
+    Usage,
+)
 from .prompts import build_prompt
+from .toolcalls import ToolCallSplitter
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +88,10 @@ class MlxEngine:
     """
 
     supports_images = False
+    # The checkpoint emits Mistral `[TOOL_CALLS]` when the tools block sits in
+    # the right place. Compliance is uneven -- see server/llm/CLAUDE.md -- but
+    # the protocol is implemented, so a tool-tuned checkpoint works unchanged.
+    supports_tools = True
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -175,11 +189,12 @@ class MlxEngine:
         self,
         messages: Sequence[Message],
         params: GenerationParams,
+        tools: Sequence[ToolSpec] = (),
     ) -> AsyncIterator[StreamEvent]:
         if self._model is None or self._tokenizer is None:
             raise EngineNotReady("model is not loaded")
 
-        prompt = build_prompt(self._tokenizer, messages)
+        prompt = build_prompt(self._tokenizer, messages, tools)
 
         async with self._admit():
             loop = asyncio.get_running_loop()
@@ -210,6 +225,10 @@ class MlxEngine:
 
             def generate() -> None:
                 try:
+                    # Holds back text that could still be the start of a
+                    # `[TOOL_CALLS]` marker, so a marker split across chunks
+                    # never leaks into the visible answer.
+                    splitter = ToolCallSplitter()
                     response = None
                     for response in stream_generate(
                         self._model,
@@ -225,8 +244,17 @@ class MlxEngine:
                             repetition_context_size=params.repetition_context_size,
                         ),
                     ):
-                        if not emit(Delta(response.text)):
+                        visible = splitter.feed(response.text)
+                        if visible and not emit(Delta(visible)):
                             return
+
+                    # A partial marker that never completed is ordinary text;
+                    # releasing it here is what keeps it from being swallowed.
+                    trailing, tool_calls = splitter.finish()
+                    if trailing and not emit(Delta(trailing)):
+                        return
+                    if tool_calls and not emit(ToolCalls(tuple(tool_calls))):
+                        return
 
                     if response is None:
                         # Nothing was generated at all (e.g. the very first
@@ -243,9 +271,13 @@ class MlxEngine:
                     )
                     emit(
                         Completed(
-                            # mlx leaves this None if the loop ended without a
-                            # stop token, which means the cap was reached.
-                            finish_reason=response.finish_reason or "length",
+                            # OpenAI clients branch on this: langchain routes to
+                            # the tool node only when it reads "tool_calls".
+                            # mlx leaves its own value None if the loop ended
+                            # without a stop token, meaning the cap was reached.
+                            finish_reason="tool_calls"
+                            if tool_calls
+                            else (response.finish_reason or "length"),
                             usage=Usage(
                                 prompt_tokens=response.prompt_tokens,
                                 completion_tokens=response.generation_tokens,

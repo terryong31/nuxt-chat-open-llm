@@ -3,9 +3,36 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class FunctionCall(BaseModel):
+    name: str
+    # OpenAI sends arguments as a JSON *string*, not an object. langchain-openai
+    # parses it back, so emitting an object here silently breaks tool binding.
+    arguments: str
+
+
+class ToolCallSpec(BaseModel):
+    id: str
+    type: Literal["function"] = "function"
+    function: FunctionCall
+
+
+class FunctionDef(BaseModel):
+    name: str
+    description: str = ""
+    parameters: dict = {}
+
+
+class ToolDef(BaseModel):
+    type: Literal["function"] = "function"
+    function: FunctionDef
+
+
 class ChatMessage(BaseModel):
-    role: Literal["system", "user", "assistant"]
-    content: str
+    role: Literal["system", "user", "assistant", "tool"]
+    # Absent on an assistant turn that only asked for tools.
+    content: str | None = None
+    tool_calls: list[ToolCallSpec] | None = None
+    tool_call_id: str | None = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -20,6 +47,10 @@ class ChatCompletionRequest(BaseModel):
     # reply came back at the server default.
     max_completion_tokens: int | None = None
     stream: bool = False
+    tools: list[ToolDef] | None = None
+    # Accepted so clients that always send it do not 422. Only "none" changes
+    # behaviour here; the checkpoint decides the rest on its own.
+    tool_choice: str | dict | None = None
 
     @property
     def resolved_max_tokens(self) -> int | None:
@@ -29,7 +60,8 @@ class ChatCompletionRequest(BaseModel):
 
 class ChatCompletionChoiceMessage(BaseModel):
     role: str = "assistant"
-    content: str
+    content: str | None = None
+    tool_calls: list[ToolCallSpec] | None = None
 
 
 class ChatCompletionChoice(BaseModel):
