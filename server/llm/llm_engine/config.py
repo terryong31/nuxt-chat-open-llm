@@ -32,6 +32,9 @@ class Settings(BaseSettings):
 
     # -- model --------------------------------------------------------------
     model_id: str = "mlx-community/Mamba-Codestral-7B-v0.1-4bit"
+    # Directory of LoRA adapter weights to apply at load. Empty serves the base
+    # checkpoint; `make finetune` writes to packages/finetune/adapters.
+    adapter_path: str = ""
     cache_limit_mb: int = 512
     extra_eos_tokens: list[str] = []
 

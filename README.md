@@ -313,9 +313,11 @@ The reasoning and the rejected alternatives live in
   be containerized — [ADR 0001](docs/adr/0001-run-the-server-natively.md).
 - **One generation at a time.** Excess load is shed with `503`, not queued —
   [ADR 0003](docs/adr/0003-serialize-generation.md).
-- **No tool calling in practice.** The gateway binds web-search and RAG tools,
-  but Mamba-Codestral is a base code model and does not emit tool calls. The
-  path works; this checkpoint does not exercise it.
+- **Tool calling is implemented but unevenly obeyed.** The engine speaks
+  Mistral's `[TOOL_CALLS]` protocol and the checkpoint does use it — for
+  questions close to its training distribution. Others get answered in prose
+  instead. A tool-tuned checkpoint works unchanged —
+  [ADR 0007](docs/adr/0007-tool-calling-in-the-engine.md).
 - **Output quality is bounded by a 4-bit base checkpoint.** Codestral Mamba is
   not instruction-tuned, so it paraphrases prompts back, and quantization
   occasionally emits a stray non-ASCII token mid-identifier.
@@ -334,8 +336,8 @@ The reasoning and the rejected alternatives live in
 - [ ] Coding-focused system prompt in place of the template's generic persona
 - [ ] Benchmark Mamba vs. a comparable transformer on latency, memory, and
       long-context behaviour — the experiment this project exists for
-- [ ] Automated test suite — `testpaths` are configured but empty, so CI's
-      green `pytest` currently proves nothing
+- [x] Tool calling end to end — engine protocol, gateway execution
+- [ ] Automated test suite — `server/llm` covered; `server/api` still has none
 - [ ] Deploy the frontend (Vercel), host the gateway, tunnel to the engine
 
 ## License

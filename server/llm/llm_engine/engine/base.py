@@ -12,8 +12,8 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
-Role = Literal["system", "user", "assistant"]
-FinishReason = Literal["stop", "length"]
+Role = Literal["system", "user", "assistant", "tool"]
+FinishReason = Literal["stop", "length", "tool_calls"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +38,34 @@ ContentPart = TextPart | ImagePart
 
 
 @dataclass(frozen=True, slots=True)
+class ToolCall:
+    """A tool the model asked to run. This engine never runs one.
+
+    Executing tools is the gateway's job — the engine only reports intent, which
+    is what keeps the agent loop out of the single generation slot
+    (ADR 0006, ADR 0007).
+    """
+
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass(frozen=True, slots=True)
+class ToolSpec:
+    """A tool offered to the model, framework-agnostic.
+
+    Deliberately not OpenAI's `{"type": "function", "function": {...}}` envelope:
+    the wire shape belongs to the API layer, and `prompts.py` rebuilds whichever
+    form a given checkpoint was trained on.
+    """
+
+    name: str
+    description: str
+    parameters: dict
+
+
+@dataclass(frozen=True, slots=True)
 class Message:
     """One turn. Content is a sequence of parts, mirroring the OpenAI schema.
 
@@ -47,6 +75,11 @@ class Message:
 
     role: Role
     content: tuple[ContentPart, ...]
+    # Set on an assistant turn that asked for tools, and on the `tool` turn
+    # carrying the result back. Both are needed to replay a tool exchange into
+    # the prompt on the follow-up request.
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
 
     @classmethod
     def text(cls, role: Role, text: str) -> Message:
@@ -90,6 +123,17 @@ class Delta:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolCalls:
+    """The model asked for tools. Emitted once, just before `Completed`.
+
+    Not streamed incrementally: the call only means anything as complete JSON,
+    and a half-parsed one would be worse than waiting for the whole array.
+    """
+
+    calls: tuple[ToolCall, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Completed:
     """Terminal event. Always the last item of a stream that ran to completion."""
 
@@ -97,7 +141,7 @@ class Completed:
     usage: Usage
 
 
-StreamEvent = Delta | Completed
+StreamEvent = Delta | ToolCalls | Completed
 
 
 @runtime_checkable
@@ -112,6 +156,7 @@ class LLMEngine(Protocol):
 
     model_id: str
     supports_images: bool
+    supports_tools: bool
 
     @property
     def is_ready(self) -> bool: ...
@@ -126,4 +171,5 @@ class LLMEngine(Protocol):
         self,
         messages: Sequence[Message],
         params: GenerationParams,
+        tools: Sequence[ToolSpec] = (),
     ) -> AsyncIterator[StreamEvent]: ...

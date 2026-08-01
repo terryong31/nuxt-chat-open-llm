@@ -112,12 +112,18 @@ outside development.
   `LLM_SUPABASE_URL`, `LLM_SUPABASE_SERVICE_KEY`, `LLM_SUPABASE_JWT_SECRET`.
 - **`get_settings` is `lru_cache`d and `_cached_llm` caches per model id.**
   Changing an env var needs a restart, not a reload.
-- **The graph binds tools the checkpoint cannot call.** `web_search` and
-  `rag_search` are bound via `bind_tools`, but Mamba-Codestral is not
-  tool-trained, so `should_use_tools` routes straight to `save_reply` in
-  practice. The tool path is exercised only by a tool-capable model.
-- **The system prompt is a generic assistant**, inherited wording, wrong
-  persona for a coding chatbot on a code-tuned checkpoint.
+- **Tools now reach the model, but it does not always use them.** The engine
+  implements Mistral's tool protocol ([ADR 0007](../../docs/adr/0007-tool-calling-in-the-engine.md)),
+  so `run_tools` is live. Compliance depends on the question, not on the tool
+  count — expect `should_use_tools` to route to `save_reply` more often than a
+  hosted model would.
+- **`SYSTEM_PROMPT` is two words, and that is measured, not lazy.** On this
+  checkpoint a persona line ("You are a coding assistant") or any instruction
+  about the shape of the answer stops it emitting tool calls entirely; `Be
+  concise.` does not, and still yields fenced code. The table is in
+  [ADR 0007](../../docs/adr/0007-tool-calling-in-the-engine.md). It is also
+  folded into the user's first turn by the engine's Mistral formatting, so every
+  word is charged to their message. Measure before growing it.
 
 ## Config
 

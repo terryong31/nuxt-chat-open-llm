@@ -1,0 +1,25 @@
+[project]
+name = "finetune"
+version = "0.1.0"
+description = "LoRA fine-tuning data and recipes for the local checkpoint"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    # Training data is rendered by the engine's own prompt builder, so the
+    # format the model is trained on cannot drift from the one it is served.
+    "llm-engine",
+]
+
+[project.scripts]
+finetune-data = "finetune.dataset:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "finetune"
+
+[tool.uv.sources]
+llm-engine = { workspace = true }

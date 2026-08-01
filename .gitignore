@@ -42,3 +42,5 @@ logs
 apps/web/.data
 
 .antigravitycli
+# LoRA adapter weights — regenerate with `make finetune`
+packages/finetune/adapters/

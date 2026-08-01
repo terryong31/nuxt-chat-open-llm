@@ -17,9 +17,9 @@ dependencies = [
     "langchain-community>=0.3",
     "langchain-core>=0.3",
     # DuckDuckGo web search
-    "duckduckgo-search>=8.0",
     # pgvector via supabase postgres
     "vecs>=0.4",
+    "ddgs>=9.14.4",
 ]
 
 [project.scripts]
