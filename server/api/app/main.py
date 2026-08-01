@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.core.config import get_settings
-from app.routers import chats, health
+from app.routers import chats, health, models
 
 settings = get_settings()
 
@@ -25,6 +25,7 @@ if settings.cors_origins:
     )
 
 app.include_router(chats.router)
+app.include_router(models.router)
 app.include_router(health.router)
 
 

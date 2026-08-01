@@ -17,14 +17,14 @@ comparisons are on-theme. Checkpoint is code-tuned, so coding is the domain.
 
 Three processes, one per column of the diagram below.
 
-| Path          | What                                                     | Doc                    |
-| ------------- | -------------------------------------------------------- | ---------------------- |
-| `server/llm/` | MLX inference + OpenAI-compatible API, `:9000`            | `server/llm/CLAUDE.md` |
-| `server/api/` | BFF gateway: LangGraph agent, Supabase, auth, `:8000`     | `server/api/CLAUDE.md` |
-| `apps/web/`   | Nuxt 4 chat UI (SPA, no Nitro backend), `:3000`           | `apps/web/CLAUDE.md`   |
-| `packages/`   | Shared Python members. Empty; benchmarks land here        | —                      |
-| `supabase/`   | SQL migrations. Postgres + Auth + Storage + pgvector      | —                      |
-| `docs/adr/`   | Why the architecture is what it is                        | `docs/adr/README.md`   |
+| Path            | What                                                   | Doc                      |
+| --------------- | ------------------------------------------------------ | ------------------------ |
+| `server/llm/` | MLX inference + OpenAI-compatible API,`:9000`        | `server/llm/CLAUDE.md` |
+| `server/api/` | BFF gateway: LangGraph agent, Supabase, auth,`:8000` | `server/api/CLAUDE.md` |
+| `apps/web/`   | Nuxt 4 chat UI (SPA, no Nitro backend),`:3000`       | `apps/web/CLAUDE.md`   |
+| `packages/`   | Shared Python members. Empty; benchmarks land here     | —                       |
+| `supabase/`   | SQL migrations. Postgres + Auth + Storage + pgvector   | —                       |
+| `docs/adr/`   | Why the architecture is what it is                     | `docs/adr/README.md`   |
 
 Read the nested doc for whichever process you're in — invariants live there.
 
@@ -86,6 +86,7 @@ Add bun workspaces when it gains a sibling.
 ## Rules
 
 - Comments say **why**, not what. Match the existing density.
+- Always make a plan before executing something big.
 - Match surrounding style over outside habits.
 - Never commit secrets. `.env` ignored, `.env.example` documents keys.
 - Don't commit or push unless asked.

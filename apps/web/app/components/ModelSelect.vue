@@ -8,6 +8,7 @@ const { model, models } = useModels()
     :items="models"
     size="sm"
     :icon="models.find(m => m.value === model)?.icon"
+    :disabled="models.length < 2"
     color="neutral"
     variant="ghost"
     value-key="value"

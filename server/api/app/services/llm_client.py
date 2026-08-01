@@ -45,6 +45,24 @@ class LLMClient:
     """
 
     @staticmethod
+    async def list_models() -> list[str]:
+        """Model ids the engine actually has loaded.
+
+        Returns [] rather than raising: an unreachable engine should leave the
+        picker empty, not break the page it lives on. The UI keeps a fallback.
+        """
+        settings = get_settings()
+        url = f"{settings.llm_engine_url}/v1/models"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                return [m["id"] for m in response.json().get("data", []) if m.get("id")]
+        except (httpx.HTTPError, KeyError, ValueError) as e:
+            logger.error("Cannot list models from %s: %s", url, e)
+            return []
+
+    @staticmethod
     async def stream_chat_completion(
         messages: list[dict], model: str = ""
     ) -> AsyncGenerator[str]:

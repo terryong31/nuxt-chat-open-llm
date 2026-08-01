@@ -215,6 +215,7 @@ Supabase JWT:
 | `GET`/`DELETE` | `/v1/chats/{id}` | Fetch with messages; delete |
 | `PATCH` | `/v1/chats/{id}/title`, `/visibility` | |
 | `GET`/`POST` | `/v1/chats/{id}/votes` | |
+| `GET` | `/v1/models` | Checkpoints the engine has loaded, for the UI picker |
 | `GET` | `/health` | Liveness |
 
 ## Configuration
@@ -315,8 +316,6 @@ The reasoning and the rejected alternatives live in
 - **No tool calling in practice.** The gateway binds web-search and RAG tools,
   but Mamba-Codestral is a base code model and does not emit tool calls. The
   path works; this checkpoint does not exercise it.
-- **The model picker is decorative.** The UI lists three hosted models; the
-  engine ignores the name and always serves the loaded checkpoint.
 - **Output quality is bounded by a 4-bit base checkpoint.** Codestral Mamba is
   not instruction-tuned, so it paraphrases prompts back, and quantization
   occasionally emits a stray non-ASCII token mid-identifier.
