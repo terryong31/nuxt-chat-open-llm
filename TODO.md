@@ -9,8 +9,8 @@
    - `APP_ENV=development` currently skips auth entirely and disables
      per-user filtering in `ChatService`.
 6. Maybe use a secrets manager, still deciding
-7. Replace the placeholder model registry in `apps/web/shared/utils/models.ts` —
-   it lists three hosted models that all resolve to the local checkpoint.
+7. ~~Replace the placeholder model registry~~ done — the picker now reads
+   `GET /v1/models` from the gateway, which proxies the engine.
 8. ~~Raise the reply token budget~~ done — the gateway sends `LLM_MAX_TOKENS`
    (1024) and the engine accepts `max_completion_tokens` as well as
    `max_tokens`.

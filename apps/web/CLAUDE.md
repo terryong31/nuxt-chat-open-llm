@@ -82,12 +82,16 @@ flowchart TD
 
 ## Gotchas
 
-- **The model picker is fiction.** `shared/utils/models.ts` lists Claude Haiku,
-  Gemini 3 Flash, and GPT-5 Nano, and `useModels` defaults the cookie to
-  `anthropic/claude-haiku-4.5`. That string is forwarded to the gateway and on
-  to `server/llm`, which **ignores it** and serves the loaded MLX checkpoint.
-  Every entry silently returns Mamba-Codestral. The registry should describe
-  what this deployment actually serves.
+- **The picker's list comes from the server, not from `models.ts`.** `useModels`
+  fetches `GET /v1/models` from the gateway, which proxies what the engine has
+  loaded; `MODEL_LABELS` only prettifies ids it recognises, and an unknown id
+  still renders. Do not reintroduce a hardcoded registry — the previous one
+  advertised three hosted models that every request quietly answered with the
+  local checkpoint.
+- **The `model` cookie is reconciled on load.** A value not present in the
+  fetched list is replaced with the first available id. Browsers still hold
+  `anthropic/claude-haiku-4.5` from the template; without this they keep
+  sending a dead string forever.
 - **Message ids must be UUIDs.** `messages.id` is a `uuid` column and
   `votes.message_id` references it, but the AI SDK's default generator emits
   nanoid strings like `LUMdEkfm5WARUMBu`. `useChat` is configured with
