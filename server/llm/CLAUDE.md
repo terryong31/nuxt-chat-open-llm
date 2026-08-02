@@ -137,6 +137,11 @@ disables auth), `LLM_CORS_ORIGINS`, `LLM_MAX_TOKENS_LIMIT`,
 `LLM_DEFAULT_MAX_TOKENS` is `200`, which truncates a code answer mid-block. It
 applies only when the caller names no budget; the gateway sends `1024`.
 
+`LLM_ADAPTER_PATH` applies a LoRA adapter at load; empty serves the base
+checkpoint. Training it is not this service's job — that lives in
+`packages/finetune`, and the engine only consumes the result
+([ADR 0008](../../docs/adr/0008-fine-tune-for-tool-call-compliance.md)).
+
 **Accept both token-budget spellings.** OpenAI renamed `max_tokens` to
 `max_completion_tokens`, and current clients send only the new name —
 langchain-openai rewrites the old one into it unconditionally. `schemas.py`

@@ -55,15 +55,23 @@ ADAPTERS := packages/finetune/adapters
 finetune-data:  ## Regenerate LoRA training data
 	uv run finetune-data
 
+# Hyperparameters live in lora.yaml, not here: CLI flags override the file, so
+# a stray flag on this line would silently win over a value whose comment
+# explains why it has to be what it is.
 finetune:  ## LoRA fine-tune for tool calling — STOP `make llm` first, it needs the RAM
-	uv run python -m mlx_lm lora --model $(MODEL) --train \
-		--data packages/finetune/data --adapter-path $(ADAPTERS) \
-		--fine-tune-type lora --num-layers 8 --batch-size 1 \
-		--iters 300 --learning-rate 1e-4 --max-seq-length 1024 \
-		--steps-per-report 20 --steps-per-eval 100 --grad-checkpoint
+	uv run python -m mlx_lm lora --train -c packages/finetune/lora.yaml
 
 finetune-serve:  ## Run the engine with the trained adapter on :9000
 	APP_ENV=development LLM_ADAPTER_PATH=$(ADAPTERS) uv run llm-engine
+
+# Held-out prompts, so this measures generalisation rather than memorisation.
+# Run both halves to get a before/after; each loads the checkpoint, so not
+# while the engine is up.
+finetune-eval-base:  ## Score tool-call compliance on the BASE checkpoint
+	uv run finetune-eval --json packages/finetune/eval-base.json
+
+finetune-eval:  ## Score tool-call compliance WITH the trained adapter
+	uv run finetune-eval --adapter $(ADAPTERS) --json packages/finetune/eval-lora.json
 
 lint:  ## Lint Python and JavaScript packages
 	uv run ruff format --check server/api server/llm

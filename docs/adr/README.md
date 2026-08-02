@@ -13,6 +13,7 @@ disagree, an ADR is stale — fix it.
 | [0005](0005-render-the-frontend-client-side.md) | Render the frontend client-side | Accepted |
 | [0006](0006-move-the-bff-into-a-python-gateway.md) | Move the BFF out of Nitro into a Python gateway | Accepted |
 | [0007](0007-tool-calling-in-the-engine.md) | The engine reports tool calls, the gateway runs them | Accepted |
+| [0008](0008-fine-tune-for-tool-call-compliance.md) | Fine-tune the checkpoint for tool-call compliance | Accepted |
 
 Copy the shape of an existing record. Number sequentially and never renumber.
 A decision that changes gets a new record marked `Supersedes 000N`; the old one

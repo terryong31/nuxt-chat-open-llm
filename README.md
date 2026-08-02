@@ -291,7 +291,8 @@ server/
 apps/
   web/                   Nuxt 4 chat frontend — bun, own lockfile
 supabase/migrations/     Schema, RLS, pgvector
-packages/                Future Python members (benchmarks)
+packages/
+  finetune/              LoRA data and recipe for tool-call compliance
 ```
 
 ## Deployment

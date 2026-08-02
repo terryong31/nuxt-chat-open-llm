@@ -1,0 +1,51 @@
+# LoRA recipe. One file rather than a Makefile command line, because two of
+# these values are load-bearing and the reason is not obvious from the number.
+#
+# `scale: 2.0` is the important one. mlx-lm defaults to 20.0, which diverges to
+# NaN on this checkpoint within ~40 iterations, and the cause is specific to
+# state space models: LoRA here lands on `mixer.in_proj`, whose output is split
+# into `gate`, `conv_input` and `dt` -- the SSM's *time step*. `ssm_update` then
+# exponentiates it against `A_log`. A transformer's `q_proj` feeds a softmax,
+# which is bounded and forgives a large perturbation; `dt` feeds an exponential,
+# which does not. Measured: scale 20 diverged at iter 25, scale 2 trained to
+# loss ~0.2 over 60 iterations with `max|logit|` flat at ~30.
+#
+# Adapting `in_proj` at scale 20 while *skipping* it (out_proj only) was also
+# stable, which is what confirms the diagnosis -- but it learned visibly worse,
+# because it can only rescale the block's output and never its routing. So the
+# fix is a smaller perturbation to `in_proj`, not avoiding it.
+
+model: "mlx-community/Mamba-Codestral-7B-v0.1-4bit"
+data: "packages/finetune/data"
+adapter_path: "packages/finetune/adapters"
+
+fine_tune_type: lora
+num_layers: 8
+lora_parameters:
+  rank: 8
+  scale: 2.0
+  dropout: 0.0
+
+# 300 iterations at batch size 1 is under one epoch of 354 examples. The format
+# is learned inside ~30 iterations; the rest is consolidation, and more would
+# start memorising topics rather than the shape of an information need.
+iters: 300
+batch_size: 1
+max_seq_length: 1024
+
+# `learning_rate` is ignored when `lr_schedule` is set. Warmup keeps the first
+# updates small while Adam's moment estimates are still cold, and the decay is
+# margin: the sweep only proved stability over 60 iterations, and this run is
+# five times longer.
+lr_schedule:
+  name: cosine_decay
+  arguments: [0.0001, 300, 0.00001]
+  warmup: 20
+  warmup_init: 0.000001
+
+steps_per_report: 20
+steps_per_eval: 100
+val_batches: 25
+save_every: 100
+grad_checkpoint: true
+seed: 0
