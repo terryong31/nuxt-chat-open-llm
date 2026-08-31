@@ -8,7 +8,7 @@ from local_llm.api.router import api_router
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """
     FastAPI Lifespan Context Manager.
     - Startup: Preloads all configured models into Unified Memory.
