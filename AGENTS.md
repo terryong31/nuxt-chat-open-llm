@@ -40,8 +40,8 @@ graph TD
 ## 2. Core Architectural Invariants (DO NOT BREAK)
 
 ### A. Model Memory Lifecycle (`src/local_llm/models/manager.py` & `src/local_llm/main.py`)
-1. **Preloading**: All supported models in `settings.SUPPORTED_MODELS` must be preloaded into memory at application startup in `ModelManager.preload_all_models()`.
-2. **Instant Activation**: Switching between preloaded models (`ModelManager.activate_model()`) MUST be an in-memory pointer swap with **0.0s reload delay**.
+1. **Lean Startup**: On application startup (`ModelManager.preload_default_model()`), only the default model (`settings.DEFAULT_MODEL`) is loaded to keep memory usage under ~10GB.
+2. **On-Demand Dynamic Swap**: When an API request targets a different model (`ModelManager.activate_model()`), the manager unloads the active model, runs `gc.collect()`, executes `mx.clear_cache()`, and loads the new model so total memory usage never exceeds the single-model footprint.
 3. **Shutdown Memory Flush**: On `KeyboardInterrupt` / FastAPI lifespan shutdown, `ModelManager.unload_all()` MUST clear all model references, run `gc.collect()`, and execute `mx.clear_cache()`.
 
 ### B. Streaming Protocol & Event Schema
