@@ -19,14 +19,14 @@ Full-featured AI Chatbot Nuxt application with authentication, chat history, col
 
 ## Features
 
-- ⚡️ **Streaming AI messages** powered by the [AI SDK](https://ai-sdk.dev) with thinking/reasoning support
-- 🤖 **Multiple model support** — Claude Haiku 4.5, Gemini 3 Flash and GPT-5 Nano via [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)
-- 🔍 **Web search** with built-in provider tools (Anthropic, OpenAI)
-- 📊 **Charts and weather** tool calling with rich UI rendering
-- 🔐 **Authentication** via GitHub OAuth using [nuxt-auth-utils](https://github.com/atinux/nuxt-auth-utils)
-- 💾 **Chat history persistence** using SQLite database ([Turso](https://turso.tech) in production) and [Drizzle ORM](https://orm.drizzle.team)
-- 📎 **File uploads** with drag & drop using [NuxtHub Blob](https://hub.nuxt.com/docs/blob) (requires authentication)
-- ✨ **Markdown rendering** with streaming code highlighting via [Comark](https://comark.dev)
+- **Streaming AI messages** powered by the [AI SDK](https://ai-sdk.dev) with thinking/reasoning support
+- **Multiple model support** - Claude Haiku 4.5, Gemini 3 Flash and GPT-5 Nano via [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)
+- **Web search** with built-in provider tools (Anthropic, OpenAI)
+- **Charts and weather** tool calling with rich UI rendering
+- **Authentication** via GitHub OAuth using [nuxt-auth-utils](https://github.com/atinux/nuxt-auth-utils)
+- **Chat history persistence** using SQLite database ([Turso](https://turso.tech) in production) and [Drizzle ORM](https://orm.drizzle.team)
+- **File uploads** with drag & drop using [NuxtHub Blob](https://hub.nuxt.com/docs/blob) (requires authentication)
+- **Markdown rendering** with streaming code highlighting via [Comark](https://comark.dev)
 
 ## Quick Start
 
@@ -89,7 +89,7 @@ This template uses [NuxtHub Blob](https://hub.nuxt.com/docs/blob) for file uploa
 - **[Cloudflare R2](https://hub.nuxt.com/docs/blob#set-a-driver)** (when deployed to Cloudflare)
 - **[Amazon S3](https://hub.nuxt.com/docs/blob#set-a-driver)** (with manual configuration)
 
-For **Vercel Blob**, assign a Blob Store to your project from the Vercel dashboard (Project → Storage), then set the token for local development:
+For **Vercel Blob**, assign a Blob Store to your project from the Vercel dashboard (Project -> Storage), then set the token for local development:
 
 ```bash
 BLOB_READ_WRITE_TOKEN=<your-vercel-blob-token>
