@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# Node / Nuxt
+node_modules/
+.nuxt/
+.output/
+chat-app/.data/
+chat-app/node_modules/
+chat-app/.nuxt/
+chat-app/.output/
+
+# Environment files
+.env
+.env.*
+.env 
+*.env
