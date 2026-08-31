@@ -14,10 +14,10 @@ graph TD
         UI --- Client
     end
 
-    subgraph Backend ["Backend (FastAPI + Python 3.14)"]
-        API["POST /chat Endpoint"]
-        MM["ModelManager (Unified Memory Preloader & Cache)"]
-        LG["LangGraph ReAct Agent Engine"]
+    subgraph Backend ["Backend (src/local_llm - FastAPI + Python 3.14)"]
+        API["API Layer (src/local_llm/api)"]
+        MM["ModelManager (src/local_llm/models)"]
+        LG["LangGraph ReAct Engine (src/local_llm/agent)"]
         MLX["MLX-LM (Metal GPU Acceleration on Apple Silicon)"]
         
         API --> MM
@@ -25,7 +25,7 @@ graph TD
         LG --> MLX
     end
 
-    subgraph Tools ["Tools Layer"]
+    subgraph Tools ["Tools Layer (src/local_llm/tools)"]
         DDGS["DuckDuckGo Search (ddgs)"]
         Traf["Web Page Fetcher (trafilatura)"]
     end
@@ -39,8 +39,8 @@ graph TD
 
 ## 2. Core Architectural Invariants (DO NOT BREAK)
 
-### A. Model Memory Lifecycle (`routers/chat.py` & `main.py`)
-1. **Preloading**: All supported models in `SUPPORTED_MODELS` must be preloaded into memory at application startup in `ModelManager.preload_all_models()`.
+### A. Model Memory Lifecycle (`src/local_llm/models/manager.py` & `src/local_llm/main.py`)
+1. **Preloading**: All supported models in `settings.SUPPORTED_MODELS` must be preloaded into memory at application startup in `ModelManager.preload_all_models()`.
 2. **Instant Activation**: Switching between preloaded models (`ModelManager.activate_model()`) MUST be an in-memory pointer swap with **0.0s reload delay**.
 3. **Shutdown Memory Flush**: On `KeyboardInterrupt` / FastAPI lifespan shutdown, `ModelManager.unload_all()` MUST clear all model references, run `gc.collect()`, and execute `mx.clear_cache()`.
 
@@ -53,7 +53,7 @@ The backend streams Server-Sent Events (`data: <JSON>\n\n`) with the following s
 - `{"type": "metrics", "metrics": {...}}`: Hardware & generation telemetry payload.
 - `data: [DONE]`: Stream completion indicator.
 
-### C. Strict Thinking & Tool Tag Isolation (`agent/graph.py`)
+### C. Strict Thinking & Tool Tag Isolation (`src/local_llm/agent/engine.py`)
 - **Thinking Boundary**: Tokens generated before `</think>` MUST route **exclusively** to `thinking` events and NEVER leak to `answer`.
 - **Tool Interception**: XML tags (`<tool_call>`, `<function=...>`, `<parameter=...>`) must be intercepted and swallowed in the post-thinking buffer.
 - **Deterministic Synthesis**: After tool calls finish, the agent MUST trigger a synthesis pass with an explicit directive to force complete markdown generation without infinite search loops.
@@ -64,11 +64,16 @@ The backend streams Server-Sent Events (`data: <JSON>\n\n`) with the following s
 
 | Path | Purpose |
 | :--- | :--- |
-| `main.py` | FastAPI application entrypoint, CORS setup, and lifespan lifecycle. |
-| `routers/chat.py` | `/chat` endpoint, Pydantic schemas, and `ModelManager` memory cache. |
-| `agent/graph.py` | LangGraph ReAct agent, tool parsing regex, and streaming state machine. |
-| `agent/state.py` | TypedDict state definitions for LangGraph nodes. |
-| `tools/web_search.py` | DuckDuckGo search (`perform_web_search`) and Trafilatura fetcher (`perform_web_fetch`). |
+| `src/main.py` | Backend launcher delegating to `local_llm.main:app`. |
+| `src/local_llm/main.py` | FastAPI application factory, CORS setup, and lifespan lifecycle. |
+| `src/local_llm/core/config.py` | Pydantic `BaseSettings` for env vars, CORS, and model defaults. |
+| `src/local_llm/schemas/` | Pydantic DTOs (`ChatMessage`, `ChatRequest`, `ChatResponse`, `MetricsResponse`). |
+| `src/local_llm/models/manager.py`| `ModelManager` Unified Memory preloader and instant activation cache. |
+| `src/local_llm/agent/graph.py` | LangGraph ReAct StateGraph definition and nodes. |
+| `src/local_llm/agent/engine.py`| Deterministic 2-phase streaming generator (`stream_graph_chat`). |
+| `src/local_llm/agent/parser.py`| Tool call XML regex extraction and fallback parser. |
+| `src/local_llm/tools/web_search.py` | DuckDuckGo search (`perform_web_search`) and Trafilatura fetcher (`perform_web_fetch`). |
+| `src/local_llm/api/` | Versioned API routes (`/chat`, `/health`, `/`). |
 | `chat-app/` | Nuxt 4 frontend application. |
 | `chat-app/shared/utils/models.ts` | Available model metadata and dropdown definitions. |
 | `chat-app/app/pages/chat/[id].vue`| Main chat interface and SSE streaming event handler. |
@@ -78,23 +83,30 @@ The backend streams Server-Sent Events (`data: <JSON>\n\n`) with the following s
 ## 4. Development & Verification Rules
 
 ### Package Management Rules
-- **Backend**: Always use `uv` (e.g. `uv sync`, `uv run main.py`, `uv pip install ...`).
-- **Frontend**: Always use `bun` (e.g. `bun install`, `bun dev`, `bun run lint`). Never use `npm` or `yarn`.
+- **Backend**: Always use `uv` in `src/` (e.g. `cd src && uv sync`, `uv run main.py`, `uv pip install ...`).
+- **Frontend**: Always use `bun` in `chat-app/` (e.g. `cd chat-app && bun install`, `bun dev`, `bun run lint`). Never use `npm` or `yarn`.
 
 ### Adding a New Model
-1. Add model Hugging Face ID to `SUPPORTED_MODELS` in `routers/chat.py`.
+1. Add model Hugging Face ID to `SUPPORTED_MODELS` in `src/local_llm/core/config.py`.
 2. Add model entry (label, value, icon) to `chat-app/shared/utils/models.ts`.
 3. Verify memory footprint fits within Apple Silicon Unified Memory.
 
 ### Adding a New Tool
-1. Define the tool schema in `tools/` using OpenAI/Qwen compatible JSON schema.
+1. Define the tool schema in `src/local_llm/tools/` using OpenAI/Qwen compatible JSON schema.
 2. Implement the Python execution function.
-3. Wire the tool definition and execution branch into `tools_node` and `stream_graph_chat` in `agent/graph.py`.
+3. Wire the tool definition into `src/local_llm/tools/registry.py` and execution branch into `src/local_llm/agent/graph.py`.
 
 ### Verification Checklist Before Commits
 ```bash
+# Using Mise (Root)
+mise run check:be
+mise run lint
+mise run typecheck
+
+# Or Manual Execution:
 # 1. Backend Verification
-uv run python -c "from routers.chat import ModelManager; print('Backend OK')"
+cd src
+uv run python -c "from local_llm.models.manager import ModelManager; print('Backend OK')"
 
 # 2. Frontend Lint & Typecheck
 cd chat-app

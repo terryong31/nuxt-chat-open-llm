@@ -61,7 +61,7 @@ graph TD
     Backend --> ModelManager
     Backend --> AgentEngine[LangGraph ReAct Agent Engine]
     
-    subgraph AgentEngine [agent/graph.py]
+    subgraph AgentEngine [src/local_llm/agent]
         Think[Reasoning & Decision Pass]
         ToolDetect{Tool Invocation?}
         ToolsNode[Tools Execution Node]
@@ -84,23 +84,32 @@ graph TD
 
 ```text
 local-llm/
-├── agent/
-│   ├── graph.py             # LangGraph ReAct agent & multi-step streaming state machine
-│   └── state.py             # Agent state definitions
-├── tools/
-│   └── web_search.py        # DuckDuckGo search + Trafilatura webpage fetcher
-├── routers/
-│   └── chat.py              # FastAPI chat endpoint & in-memory ModelManager
-├── main.py                  # Server entrypoint with lifespan startup/shutdown lifecycle
-├── pyproject.toml           # Python dependencies (managed via uv)
-├── chat-app/                # Nuxt 4 Frontend
-│   ├── app/
-│   │   ├── pages/           # Chat UI routes
-│   │   ├── components/      # Chat, tools, and telemetry components
-│   │   └── composables/     # SSE streaming & model state hooks
+├── src/                     # Backend Python application & config
+│   ├── local_llm/           # Python FastAPI modular package
+│   │   ├── core/            # Pydantic BaseSettings & configuration
+│   │   ├── schemas/         # Request / Response DTO models
+│   │   ├── models/          # ModelManager Unified Memory preloader
+│   │   ├── agent/           # LangGraph ReAct agent & streaming engine
+│   │   ├── tools/           # DuckDuckGo search & Trafilatura fetch tools
+│   │   ├── api/             # Versioned API routes (/chat, /health)
+│   │   └── main.py          # FastAPI application factory & lifespan
+│   ├── main.py              # Backend entrypoint launcher
+│   ├── pyproject.toml       # Backend Python dependencies (managed via uv)
+│   ├── uv.lock              # Lockfile
+│   ├── .python-version      # Python runtime pin
+│   └── .env                 # Backend environment variables (HF_TOKEN, etc.)
+├── chat-app/                # Frontend Nuxt 4 application & config
+│   ├── app/                 # Chat UI pages, components & composables
+│   ├── server/              # Server endpoints & database logic
 │   ├── shared/utils/        # Model definitions and helpers
-│   └── package.json         # Node dependencies (managed via bun)
-└── README.md
+│   ├── package.json         # Frontend dependencies (managed via bun)
+│   ├── bun.lock             # Lockfile
+│   └── .env                 # Frontend environment variables (NUXT_SESSION_PASSWORD, etc.)
+├── .gitignore
+├── README.md
+├── mise.toml                # Mise monorepo task runner configuration
+├── CONTRIBUTING.md
+└── AGENTS.md
 ```
 
 ---
@@ -110,43 +119,48 @@ local-llm/
 ### Prerequisites
 
 - macOS with Apple Silicon (M1/M2/M3/M4/M5 recommended, 16GB+ RAM).
+- [mise](https://mise.jdx.dev/) for monorepo and runtime management.
 - [uv](https://github.com/astral-sh/uv) for fast Python package management.
 - [bun](https://bun.sh) for frontend package management.
 
 ---
 
-### 1. Backend Setup
+### Quick Start with Mise (Recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/terryong31/local-llm.git
-cd local-llm
+# 1. Configure backend environment
+cp src/.env.example src/.env
 
-# Create virtual environment and install dependencies with uv
-uv sync
+# 2. Configure frontend environment
+cp chat-app/.env.example chat-app/.env
 
-# Configure environment variables
-cp .env.example .env
-# Edit .env and add your HF_TOKEN for high-speed Hugging Face downloads
-
-# Start the local LLM backend server
-uv run main.py
+# 3. Start everything concurrently
+mise run dev:all
 ```
 
-The backend server will start on `http://localhost:8000`.
+Or start components individually:
+- **Backend only**: `mise run dev:be` (starts FastAPI on `http://127.0.0.1:8000`)
+- **Frontend only**: `mise run dev:web` (starts Nuxt 4 on `http://localhost:3000`)
 
 ---
 
-### 2. Frontend Setup
+### Manual Setup
+
+#### 1. Backend Setup
 
 ```bash
-# Navigate to the chat frontend
+cd src
+uv sync
+cp .env.example .env
+uv run main.py
+```
+
+#### 2. Frontend Setup
+
+```bash
 cd chat-app
-
-# Install frontend dependencies with bun
 bun install
-
-# Run the development server
+cp .env.example .env
 bun dev
 ```
 
@@ -154,14 +168,24 @@ Open `http://localhost:3000` in your browser.
 
 ---
 
-## Configuration (`.env`)
+## Configuration
 
+### Backend (`src/.env`)
 ```env
 # Optional: Hugging Face Token for fast model downloads
 HF_TOKEN=hf_your_token_here
 
 # Optional: Enable live reloading for backend development
 RELOAD=false
+```
+
+### Frontend (`chat-app/.env`)
+```env
+# Password for nuxt-auth-utils (minimum 32 characters)
+NUXT_SESSION_PASSWORD=your_session_secret_key_here
+
+# Local LLM Backend API URL (Default: http://127.0.0.1:8000)
+LOCAL_LLM_URL=http://127.0.0.1:8000
 ```
 
 ---

@@ -1,0 +1,33 @@
+[tools]
+python = "3.14"
+uv = "latest"
+bun = "latest"
+
+[tasks."dev:be"]
+description = "Start the FastAPI Local LLM backend server"
+dir = "src"
+run = "uv run main.py"
+
+[tasks."dev:web"]
+description = "Start the Nuxt 4 frontend dev server"
+dir = "chat-app"
+run = "bun dev"
+
+[tasks."dev:all"]
+description = "Start both backend and frontend concurrently"
+depends = ["dev:be", "dev:web"]
+
+[tasks."lint"]
+description = "Lint the frontend codebase"
+dir = "chat-app"
+run = "bun run lint"
+
+[tasks."typecheck"]
+description = "Typecheck the frontend codebase"
+dir = "chat-app"
+run = "bun run typecheck"
+
+[tasks."check:be"]
+description = "Verify backend imports and model manager"
+dir = "src"
+run = "uv run python -c \"from local_llm.models.manager import ModelManager; print('Backend OK')\""
